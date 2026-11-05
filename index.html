@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111318"><title>Damas Moçambicanas TTJ</title>
+<style>
+:root{--bg:#111318;--panel:#1b1e26;--gold:#d6ad62;--white:#f4f0e7;--play:#66717f;--text:#f5f1e8;--muted:#adb2bd}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#252936,#111318 62%);color:var(--text);font:15px system-ui,Arial,sans-serif}
+main{max-width:960px;margin:auto;padding:18px 12px 36px}.brand{text-align:center;margin:6px 0 18px}.brand h1{font-size:clamp(23px,5vw,36px);margin:4px}.brand p{color:var(--muted);margin:0}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start}.board-wrap,.panel{background:var(--panel);border:1px solid #393e49;border-radius:17px;padding:12px;box-shadow:0 14px 35px #0006}
+.board{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:repeat(8,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);aspect-ratio:1;border:3px solid #9c7b45;border-radius:5px;overflow:hidden}
+.sq{position:relative;display:grid;place-items:center;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden;cursor:pointer;touch-action:manipulation}.sq.light{background:#f4f0e7}.sq.dark{background:#78877f}
+.sq.selected:after{content:"";position:absolute;inset:4%;border:3px solid #ffe08b;border-radius:5px;pointer-events:none}.sq.target:before{content:"";position:absolute;width:26%;height:26%;border-radius:50%;background:#f8d57b;box-shadow:0 0 0 5px #f8d57b44;z-index:2}
+.piece{width:76%;height:auto;aspect-ratio:1/1;position:relative;flex:none;border-radius:50%;z-index:1;display:grid;place-items:center;box-shadow:inset 0 3px 5px #ffffff55,inset 0 -6px 8px #0008,0 4px 5px #0008;border:3px solid #1115}
+.piece.white{background:linear-gradient(145deg,#fff7e7,#c9bda8);border-color:#f8e8cb}.piece.black{background:linear-gradient(145deg,#4a4d55,#111318);border-color:#777b85}
+.piece.king:after{content:"♛";position:absolute;inset:0;display:grid;place-items:center;font-size:clamp(15px,3.5vw,28px);line-height:1;color:var(--gold);text-shadow:0 1px 2px #000;pointer-events:none}
+.panel h2{font-size:17px;margin:2px 0 10px}.status{padding:12px;border-radius:10px;background:#11151c;color:#f2d89d;min-height:66px;line-height:1.4}
+.info{display:flex;justify-content:space-between;gap:8px;margin:12px 0;color:var(--muted);font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-radius:9px;font-weight:700;cursor:pointer}button.secondary{background:#353b48;color:var(--text)}
+.help{font-size:12px;line-height:1.5;color:var(--muted);margin-top:14px}.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:10px 2px 0}
+@media(max-width:720px){.layout{grid-template-columns:1fr}.panel{order:2}.board-wrap{order:1}}
+</style></head>
+<body><main>
+<header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 12 · promoção corrigida e rotas selecionáveis</p></header>
+<section class="layout">
+<div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
+<aside class="panel"><h2>Partida de teste</h2><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
+<div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
+<label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
+<select id="scenario" onchange="loadScenario(this.value)" style="width:100%;padding:10px;border-radius:9px;background:#11151c;color:var(--text);border:1px solid #454b58">
+<option value="standard">Partida normal</option><option value="pg">Pé de Galinha — 3 damas contra 1</option><option value="king">Teste: alcance de captura da dama</option><option value="promotion">Teste: promoção a dama</option>
+</select>
+<div id="pgInfo" class="status" style="margin-top:10px;min-height:0">Pé de Galinha: não iniciado.</div>
+<div class="actions"><button onclick="newGame()">Nova partida</button><button class="secondary" onclick="undo()">Desfazer</button><button class="secondary" onclick="flip()">Rodar visão</button></div>
+<div class="help"><b>Como testar:</b> selecione uma peça da sua cor. Os destinos legais aparecem com pontos dourados. Capturas são obrigatórias. Ao chegar à última linha num movimento simples, a peça é promovida imediatamente. Se houver mais de uma sequência, o jogo exige a captura de maior valor (dama = 1,5; peça normal = 1).<br><br>As peças iniciais ficam nas casas jogáveis cinza-azuladas; as casas brancas são não jogáveis. O Carreirão fica à esquerda, conforme a orientação aprovada. A dama pode capturar à distância e escolher qualquer casa livre depois da peça na mesma diagonal. Este protótipo é local para duas pessoas no mesmo aparelho. Agora inclui teste de Pé de Galinha: 3 damas contra 1, contando apenas as jogadas do caçador, até 12; se a dama sobreviver, o resultado é empate. Continua sem adversário online.</div>
+</aside></section></main>
+<script>
+const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
+let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
+const dirs=[[-1,-1],[-1,1],[1,-1],[1,1]];
+function clone(b){return b.map(row=>row.map(p=>p?{...p}:null))}
+function init(){let b=Array.from({length:N},()=>Array(N).fill(null));
+ // Orientação moçambicana aprovada pelo utilizador no Protótipo 01:
+ // disposição inicial com as peças nas casas de paridade par.
+ // Não inverter novamente as colunas: essa inversão colocava o Carreirão à direita.
+ for(let r=0;r<3;r++)for(let c=0;c<8;c++)if((r+c)%2===0)b[r][c]={color:'black',king:false};
+ for(let r=5;r<8;r++)for(let c=0;c<8;c++)if((r+c)%2===0)b[r][c]={color:'white',king:false};
+ return b}
+
+function countKingsAndPieces(b,color){
+ const pieces=b.flat().filter(p=>p&&p.color===color);
+ return {total:pieces.length,kings:pieces.filter(p=>p.king).length};
+}
+function detectPG(){
+ const w=countKingsAndPieces(B,'white'),d=countKingsAndPieces(B,'black');
+ if(w.total===3&&w.kings===3&&d.total===1&&d.kings===1)return {hunter:'white',target:'black'};
+ if(d.total===3&&d.kings===3&&w.total===1&&w.kings===1)return {hunter:'black',target:'white'};
+ return null;
+}
+function syncPGDisplay(){
+ const el=document.getElementById('pgInfo');
+ if(!pgActive){el.textContent='Pé de Galinha: não iniciado. A contagem só começa quando há exatamente 3 damas contra 1.';return}
+ el.textContent='Pé de Galinha ativo · Caçador: '+(pgHunter==='white'?'Claro':'Escuro')+' · Jogadas do caçador: '+pgMoves+'/12.';
+}
+function loadScenario(which){
+ B=Array.from({length:8},()=>Array(8).fill(null));
+ if(which==='pg'){
+  B[6][0]={color:'white',king:true};B[4][2]={color:'white',king:true};B[6][4]={color:'white',king:true};
+  B[2][6]={color:'black',king:true};turn='white';
+ }else if(which==='king'){
+  // A dama clara em (6,0) captura o dado escuro em (3,3).
+  // Pode terminar em qualquer casa livre depois dele: (2,4), (1,5) ou (0,6).
+  B[6][0]={color:'white',king:true};
+  B[3][3]={color:'black',king:false};
+  B[7][7]={color:'black',king:false};
+  turn='white';
+ }else if(which==='promotion'){
+  // Dado claro a uma casa da promoção; mover para (0,0) deve coroá-lo.
+  B[1][1]={color:'white',king:false};
+  B[7][7]={color:'black',king:false};
+  turn='white';
+ }else{B=init();turn='white'}
+ selected=null;chainOptions=null;history=[];gameOver=false;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;
+ const pg=detectPG();if(pg){pgActive=true;pgHunter=pg.hunter;pgTarget=pg.target;}
+ legal=allLegal(B,turn);render();
+ say(which==='pg'?'Posição de teste carregada: 3 damas claras contra 1 dama escura. A contagem começa na primeira jogada do caçador.':which==='king'?'Teste de alcance: selecione a dama clara. Ela deve poder capturar o dado escuro e aterrar em qualquer casa livre depois dele na mesma diagonal.':which==='promotion'?'Teste de promoção: mova o dado claro de (1,1) para (0,0). Deve aparecer a coroa imediatamente e a peça deve passar a mover como dama.':'Partida normal carregada. Vez do jogador claro.');
+ syncPGDisplay();
+}
+function inside(r,c){return r>=0&&r<8&&c>=0&&c<8}
+function forward(color){return color==='white'?-1:1}
+function val(p){return p.king?3:2} // unidades de meio ponto: normal=2, dama=3
+function pieceMoves(b,r,c,onlyCaptures=false){
+ const p=b[r][c];if(!p)return [];
+ let out=[];
+ if(p.king){
+  // Dama moçambicana: movimento longo nas diagonais.
+  // Na captura, pode aproximar-se por qualquer número de casas vazias,
+  // capturar a primeira peça adversária encontrada e aterrar em QUALQUER
+  // casa livre depois dela, na mesma diagonal. Não pode saltar peças.
+  for(const [dr,dc] of dirs){
+   let rr=r+dr,cc=c+dc;
+   while(inside(rr,cc)&&!b[rr][cc]){
+    if(!onlyCaptures)out.push({to:[rr,cc],cap:null});
+    rr+=dr;cc+=dc;
+   }
+   if(inside(rr,cc)&&b[rr][cc].color!==p.color){
+    const capR=rr,capC=cc;
+    rr+=dr;cc+=dc;
+    while(inside(rr,cc)&&!b[rr][cc]){
+     out.push({to:[rr,cc],cap:[capR,capC]});
+     rr+=dr;cc+=dc;
+    }
+   }
+  }
+ }else{
+  for(const [dr,dc] of dirs){
+   const rr=r+dr,cc=c+dc;
+   if(!inside(rr,cc))continue;
+   if(!onlyCaptures && dr===forward(p.color) && !b[rr][cc])out.push({to:[rr,cc],cap:null});
+   if(b[rr][cc]&&b[rr][cc].color!==p.color){
+    const lr=rr+dr,lc=cc+dc;
+    if(inside(lr,lc)&&!b[lr][lc])out.push({to:[lr,lc],cap:[rr,cc]});
+   }
+  }
+ }
+ return out.filter(m=>onlyCaptures?!!m.cap:!m.cap);
+}
+function seqsFrom(b,r,c,depth=0){
+ const p=b[r][c];if(!p)return [];
+ const caps=pieceMoves(b,r,c,true);if(!caps.length)return depth? [{moves:[],score:0}]:[];
+ let all=[];
+ for(const m of caps){
+  const nb=clone(b),moving=nb[r][c];nb[r][c]=null;nb[m.cap[0]][m.cap[1]]=null;
+  let promoted=false;
+  // If a man reaches promotion row during a capture sequence, it stays a man
+  // while continuing adjacent man captures. If only a flying-king capture
+  // remains, stop on promotion square and promote for the next turn.
+  const atPromotion=(moving.color==='white'&&m.to[0]===0)||(moving.color==='black'&&m.to[0]===7);
+  nb[m.to[0]][m.to[1]]=moving;
+  const next=pieceMoves(nb,m.to[0],m.to[1],true);
+  let cont=next;
+  if(!moving.king&&atPromotion){
+   const manNext=next.filter(x=>Math.abs(x.to[0]-m.to[0])===2 && Math.abs(x.to[1]-m.to[1])===2);
+   if(manNext.length)cont=manNext;
+   else cont=[];
+   if(!cont.length)promoted=true;
+  }
+  if(cont.length){
+   const tails=seqsFrom(nb,m.to[0],m.to[1],depth+1);
+   for(const t of tails)all.push({moves:[{...m,promoteAfter:false},...t.moves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
+  }else all.push({moves:[{...m,promoteAfter:promoted||atPromotion&&!moving.king}],score:val(b[m.cap[0]][m.cap[1]])});
+ }
+ return all;
+}
+function allLegal(b,color){
+ let captures=[];
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(b[r][c]?.color===color){
+  const ss=seqsFrom(b,r,c);
+  for(const s of ss)if(s.moves.length)captures.push({from:[r,c],moves:s.moves,score:s.score});
+ }
+ if(captures.length){
+  // A pontuação é em meios-pontos inteiros: peça normal=2, dama=3.
+  // Só ficam legais as sequências com o maior valor total capturado.
+  const maxScore=Math.max(...captures.map(x=>x.score));
+  return captures.filter(x=>x.score===maxScore)
+   .sort((a,b)=>b.moves.length-a.moves.length);
+ }
+ let moves=[];
+ for(let r=0;r<8;r++)for(let c=0;c<8;c++)if(b[r][c]?.color===color)
+  for(const m of pieceMoves(b,r,c,false)){
+   // Uma peça normal que termina o movimento simples na última linha
+   // deve ser promovida imediatamente, antes de passar a vez.
+   const reachesPromotion=!b[r][c].king&&
+    ((color==='white'&&m.to[0]===0)||(color==='black'&&m.to[0]===7));
+   moves.push({from:[r,c],moves:[{...m,promoteAfter:reachesPromotion}],score:0});
+  }
+ return moves;
+}
+function legalForSelected(r,c){return legal.filter(x=>x.from[0]===r&&x.from[1]===c)}
+function currentOptions(){
+ if(!selected)return [];
+ return chainOptions||legalForSelected(selected[0],selected[1]);
+}
+function render(){
+ boardEl.innerHTML='';
+ for(let vr=0;vr<8;vr++)for(let vc=0;vc<8;vc++){
+  const r=flipped?7-vr:vr,c=flipped?7-vc:vc;
+  const sq=document.createElement('div');sq.className='sq '+(((r+c)%2===0)?'dark':'light');
+  if(selected&&selected[0]===r&&selected[1]===c)sq.classList.add('selected');
+  const isTarget=selected&&currentOptions().some(x=>x.moves.length&&x.moves[0].to[0]===r&&x.moves[0].to[1]===c);
+  if(isTarget)sq.classList.add('target');
+  const p=B[r][c];if(p){const el=document.createElement('div');el.className='piece '+p.color+(p.king?' king':'');sq.appendChild(el)}
+  sq.addEventListener('click',()=>tap(r,c));boardEl.appendChild(sq);
+ }
+ updateInfo();
+}
+function updateInfo(){
+ const wc=B.flat().filter(p=>p?.color==='white').length,bc=B.flat().filter(p=>p?.color==='black').length;
+ document.getElementById('turn').textContent='Vez: '+(turn==='white'?'Claro':'Escuro');
+ document.getElementById('counts').textContent=wc+' × '+bc;
+}
+function say(s){statusEl.textContent=s}
+function tap(r,c){
+ if(gameOver)return;
+ if(selected){
+  const opts=currentOptions().filter(x=>x.moves.length&&x.moves[0].to[0]===r&&x.moves[0].to[1]===c);
+  if(opts.length){
+   const mover=turn;
+   // Save one undo snapshot at the beginning of the whole turn, not for every jump.
+   if(!chainOptions)history.push({B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves});
+   const step=opts[0].moves[0];
+   const [sr,sc]=selected;
+   const moving=B[sr][sc];
+   B[sr][sc]=null;
+   if(step.cap)B[step.cap[0]][step.cap[1]]=null;
+   B[step.to[0]][step.to[1]]=moving;
+   if(step.promoteAfter)moving.king=true;
+
+   // Keep every maximum-value route that shares this chosen step.
+   // The player chooses the next branch by tapping its next highlighted square.
+   const tails=opts.map(x=>({moves:x.moves.slice(1),score:x.score})).filter(x=>x.moves.length);
+   if(tails.length){
+    selected=[step.to[0],step.to[1]];
+    chainOptions=tails;
+    render();
+    const nextSquares=[...new Set(tails.map(x=>x.moves[0].to.join(',')))].length;
+    say(nextSquares>1?'Captura em sequência: escolha uma das casas amarelas para decidir a rota.':'Continue a sequência de capturas pela casa amarela.');
+    return;
+   }
+   selected=null;chainOptions=null;
+   finishTurn(mover);
+   return;
+  }
+  // During a capture sequence the player cannot change to another piece or cancel the route.
+  if(chainOptions){
+   say('A captura múltipla ainda não terminou. Escolha uma das casas amarelas.');
+   return;
+  }
+ }
+ if(B[r][c]?.color===turn){
+  const opts=legalForSelected(r,c);
+  if(opts.length){selected=[r,c];chainOptions=null;render();say(opts[0].moves[0].cap?'Captura obrigatória: escolha um destino marcado.':'Escolha um destino marcado.');return}
+ }
+ selected=null;chainOptions=null;render();say('Selecione uma peça da sua cor. Os destinos legais ficam marcados.');
+}
+function finishTurn(mover){
+ // Apply Pé de Galinha only after the complete capture route / move has finished.
+ const wasPG=pgActive;
+ const remainingTarget=pgActive?B.flat().filter(p=>p&&p.color===pgTarget).length:0;
+ if(pgActive&&mover===pgHunter){
+  pgMoves++;
+  if(remainingTarget===0){gameOver=true;say('O caçador capturou a dama! Vitória do caçador.');}
+  else if(pgMoves>=12){gameOver=true;say('EMPATE! A dama sobreviveu às 12 jogadas do caçador no Pé de Galinha.');}
+ }
+ if(!wasPG&&!gameOver){
+  const pg=detectPG();
+  if(pg){pgActive=true;pgHunter=pg.hunter;pgTarget=pg.target;pgMoves=0;}
+ }
+ turn=turn==='white'?'black':'white';
+ legal=allLegal(B,turn);
+ if(!gameOver&&!legal.length){gameOver=true;say('Fim de jogo! '+(mover==='white'?'Jogador claro':'Jogador escuro')+' venceu.');}
+ else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
+ render();syncPGDisplay();
+}
+function newGame(){document.getElementById('scenario').value='standard';loadScenario('standard')}
+function undo(){if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
+function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
+newGame();
+</script></body></html>
