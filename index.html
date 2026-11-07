@@ -216,6 +216,7 @@ function updateInfo(){
 function say(s){statusEl.textContent=s}
 function tap(r,c){
  if(gameOver)return;
+ if(onlineRoomId&&onlineRoomStatus==='waiting'){say('A sala já foi criada. Aguarda o segundo jogador entrar antes de começar.');return}
  if(onlineRoomId&&turn!==myColor){say('Aguarda a jogada do adversário.');return}
  if(selected){
   const opts=currentOptions().filter(x=>x.moves.length&&x.moves[0].to[0]===r&&x.moves[0].to[1]===c);
