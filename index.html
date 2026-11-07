@@ -17,14 +17,14 @@ main{max-width:960px;margin:auto;padding:18px 12px 36px}.brand{text-align:center
 .panel h2{font-size:17px;margin:2px 0 10px}.status{padding:12px;border-radius:10px;background:#11151c;color:#f2d89d;min-height:66px;line-height:1.4}
 .info{display:flex;justify-content:space-between;gap:8px;margin:12px 0;color:var(--muted);font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-radius:9px;font-weight:700;cursor:pointer}button.secondary{background:#353b48;color:var(--text)}
-.help{font-size:12px;line-height:1.5;color:var(--muted);margin-top:14px}.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:10px 2px 0}
+.room-box{margin:10px 0 14px;padding:11px;background:#11151c;border:1px solid #454b58;border-radius:10px}.room-box input{width:100%;padding:10px;border-radius:8px;background:#1b1e26;color:var(--text);border:1px solid #454b58;margin:6px 0}.room-actions{display:flex;gap:7px;flex-wrap:wrap}.room-actions button{flex:1}.room-note{font-size:12px;color:var(--muted);line-height:1.4;margin-top:8px;overflow-wrap:anywhere}.help{font-size:12px;line-height:1.5;color:var(--muted);margin-top:14px}.legend{display:flex;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:10px 2px 0}
 @media(max-width:720px){.layout{grid-template-columns:1fr}.panel{order:2}.board-wrap{order:1}}
 </style></head>
 <body><main>
 <header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 14 · peças capturadas permanecem até ao fim da sequência</p></header>
 <section class="layout">
 <div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
-<aside class="panel"><h2>Partida de teste</h2><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
+<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div></section><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
 <div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
 <label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
 <select id="scenario" onchange="loadScenario(this.value)" style="width:100%;padding:10px;border-radius:9px;background:#11151c;color:var(--text);border:1px solid #454b58">
@@ -34,9 +34,14 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <div class="actions"><button onclick="newGame()">Nova partida</button><button class="secondary" onclick="undo()">Desfazer</button><button class="secondary" onclick="flip()">Rodar visão</button></div>
 <div class="help"><b>Como testar:</b> selecione uma peça da sua cor. Os destinos legais aparecem com pontos dourados. Capturas são obrigatórias. Ao chegar à última linha num movimento simples, a peça é promovida imediatamente. Se houver mais de uma sequência, o jogo exige a captura de maior valor (dama = 1,5; peça normal = 1).<br><br>As peças iniciais ficam nas casas jogáveis cinza-azuladas; as casas brancas são não jogáveis. O Carreirão fica à esquerda, conforme a orientação aprovada. A dama pode capturar à distância e escolher qualquer casa livre depois da peça na mesma diagonal. Durante capturas múltiplas, as peças capturadas permanecem no tabuleiro até ao fim da sequência e bloqueiam a passagem; não podem ser capturadas novamente. A dama pode revisitar casas vazias (Casa Cruz), regressando a uma direção anterior depois de capturas intermediárias legais. Este protótipo é local para duas pessoas no mesmo aparelho. Agora inclui teste de Pé de Galinha: 3 damas contra 1, contando apenas as jogadas do caçador, até 12; se a dama sobreviver, o resultado é empate. Continua sem adversário online.</div>
 </aside></section></main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
+let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null;
+const SUPABASE_URL='https://kbxcqmhytdrqxvzyxhkh.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY='sb_publishable_DWcuE7BkaPO1G_wWXSzNsw_hDNwjz9p';
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 const dirs=[[-1,-1],[-1,1],[1,-1],[1,1]];
 function clone(b){return b.map(row=>row.map(p=>p?{...p}:null))}
 function init(){let b=Array.from({length:N},()=>Array(N).fill(null));
@@ -63,6 +68,7 @@ function syncPGDisplay(){
  el.textContent='Pé de Galinha ativo · Caçador: '+(pgHunter==='white'?'Claro':'Escuro')+' · Jogadas do caçador: '+pgMoves+'/12.';
 }
 function loadScenario(which){
+ if(onlineRoomId){say('Esta partida está online. Não podes carregar cenários durante a sala.');return}
  B=Array.from({length:8},()=>Array(8).fill(null));
  if(which==='pg'){
   B[6][0]={color:'white',king:true};B[4][2]={color:'white',king:true};B[6][4]={color:'white',king:true};
@@ -210,6 +216,7 @@ function updateInfo(){
 function say(s){statusEl.textContent=s}
 function tap(r,c){
  if(gameOver)return;
+ if(onlineRoomId&&turn!==myColor){say('Aguarda a jogada do adversário.');return}
  if(selected){
   const opts=currentOptions().filter(x=>x.moves.length&&x.moves[0].to[0]===r&&x.moves[0].to[1]===c);
   if(opts.length){
@@ -272,9 +279,84 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;say('Fim de jogo! '+(mover==='white'?'Jogador claro':'Jogador escuro')+' venceu.');}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
+ if(onlineRoomId)syncRoomState();
 }
-function newGame(){document.getElementById('scenario').value='standard';loadScenario('standard')}
-function undo(){if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
+async function ensureOnlineAuth(){
+ const {data,error}=await db.auth.getSession();
+ if(error)throw error;
+ if(data.session){onlineUser=data.session.user;return onlineUser}
+ const signed=await db.auth.signInAnonymously();
+ if(signed.error)throw signed.error;
+ onlineUser=signed.data.user;
+ return onlineUser;
+}
+function roomMessage(message){document.getElementById('roomInfo').textContent=message}
+function packGameState(){return {B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves}}
+function applyRoomRow(row){
+ if(!row||!row.board||!row.board.B)return;
+ const state=row.board;
+ B=clone(state.B);turn=state.turn||row.current_turn||'white';
+ gameOver=!!state.gameOver||row.status==='finished';
+ pgActive=!!state.pgActive;pgHunter=state.pgHunter||null;pgTarget=state.pgTarget||null;pgMoves=Number(state.pgMoves||0);
+ selected=null;chainOptions=null;chainCaptured=[];history=[];legal=allLegal(B,turn);
+ render();syncPGDisplay();
+ if(gameOver)say('A partida online terminou.');
+ else say('Estado sincronizado. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
+}
+function watchRoom(roomId){
+ if(roomChannel)db.removeChannel(roomChannel);
+ roomChannel=db.channel('room-'+roomId)
+  .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:'id=eq.'+roomId},payload=>{
+   const row=payload.new;onlineRoomStatus=row.status;
+   if(row.board)applyRoomRow(row);
+   roomMessage('Sala '+(onlineCode||'')+' · '+(row.status==='waiting'?'À espera do segundo jogador':row.status==='finished'?'Partida terminada':'Adversário ligado')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
+  })
+  .subscribe(state=>{
+   if(state==='SUBSCRIBED')roomMessage('Ligação em tempo real activa. Sala '+(onlineCode||'')+'.');
+   else if(state==='CHANNEL_ERROR'||state==='TIMED_OUT')roomMessage('A ligação em tempo real falhou. Verifica a internet e actualiza a página.');
+  });
+}
+async function createOnlineRoom(){
+ const btn=document.getElementById('createRoomBtn');btn.disabled=true;
+ try{
+  await ensureOnlineAuth();
+  const {data,error}=await db.rpc('create_game_room');if(error)throw error;
+  const created=Array.isArray(data)?data[0]:data;
+  if(!created?.room_id||!created?.room_code)throw new Error('A função não devolveu o código e o identificador da sala.');
+  onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';onlineRoomStatus='waiting';
+  const {error:updateError}=await db.from('rooms').update({board:packGameState(),current_turn:turn,status:'waiting',updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
+  if(updateError)throw updateError;
+  watchRoom(onlineRoomId);
+  roomMessage('Sala criada! Código: '+onlineCode+'. Envia este código ao outro jogador. Tu jogas com as claras.');
+  say('Sala online criada. Aguarda o adversário.');
+ }catch(e){roomMessage('Não foi possível criar a sala: '+(e.message||e))}
+ finally{btn.disabled=false}
+}
+async function joinOnlineRoom(){
+ const btn=document.getElementById('joinRoomBtn');btn.disabled=true;
+ try{
+  const code=document.getElementById('roomCodeInput').value.trim().toUpperCase();
+  if(!/^[A-Z0-9]{6}$/.test(code))throw new Error('Introduz o código de 6 caracteres recebido do anfitrião.');
+  await ensureOnlineAuth();
+  const {data,error}=await db.rpc('join_game_room',{p_code:code});if(error)throw error;
+  onlineRoomId=data;onlineCode=code;myColor='black';
+  const {data:row,error:readError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
+  if(readError)throw readError;
+  onlineRoomStatus=row.status;applyRoomRow(row);watchRoom(onlineRoomId);
+  roomMessage('Entraste na sala '+onlineCode+'. Tu jogas com as escuras; o anfitrião joga com as claras.');
+  say('Ligado à sala. Aguarda a vez das escuras.');
+ }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
+ finally{btn.disabled=false}
+}
+async function syncRoomState(){
+ if(!onlineRoomId||!onlineUser)return;
+ const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
+ const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
+ if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
+}
+
+function newGame(){if(onlineRoomId){say('Não podes reiniciar uma partida online em curso. Cria uma nova sala quando terminares.');return}document.getElementById('scenario').value='standard';loadScenario('standard')}
+function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
 newGame();
 </script></body></html>
