@@ -21,7 +21,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 @media(max-width:720px){.layout{grid-template-columns:1fr}.panel{order:2}.board-wrap{order:1}}
 </style></head>
 <body><main>
-<header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 12 · promoção corrigida e rotas selecionáveis</p></header>
+<header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 14 · peças capturadas permanecem até ao fim da sequência</p></header>
 <section class="layout">
 <div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
 <aside class="panel"><h2>Partida de teste</h2><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
@@ -32,11 +32,11 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 </select>
 <div id="pgInfo" class="status" style="margin-top:10px;min-height:0">Pé de Galinha: não iniciado.</div>
 <div class="actions"><button onclick="newGame()">Nova partida</button><button class="secondary" onclick="undo()">Desfazer</button><button class="secondary" onclick="flip()">Rodar visão</button></div>
-<div class="help"><b>Como testar:</b> selecione uma peça da sua cor. Os destinos legais aparecem com pontos dourados. Capturas são obrigatórias. Ao chegar à última linha num movimento simples, a peça é promovida imediatamente. Se houver mais de uma sequência, o jogo exige a captura de maior valor (dama = 1,5; peça normal = 1).<br><br>As peças iniciais ficam nas casas jogáveis cinza-azuladas; as casas brancas são não jogáveis. O Carreirão fica à esquerda, conforme a orientação aprovada. A dama pode capturar à distância e escolher qualquer casa livre depois da peça na mesma diagonal. Este protótipo é local para duas pessoas no mesmo aparelho. Agora inclui teste de Pé de Galinha: 3 damas contra 1, contando apenas as jogadas do caçador, até 12; se a dama sobreviver, o resultado é empate. Continua sem adversário online.</div>
+<div class="help"><b>Como testar:</b> selecione uma peça da sua cor. Os destinos legais aparecem com pontos dourados. Capturas são obrigatórias. Ao chegar à última linha num movimento simples, a peça é promovida imediatamente. Se houver mais de uma sequência, o jogo exige a captura de maior valor (dama = 1,5; peça normal = 1).<br><br>As peças iniciais ficam nas casas jogáveis cinza-azuladas; as casas brancas são não jogáveis. O Carreirão fica à esquerda, conforme a orientação aprovada. A dama pode capturar à distância e escolher qualquer casa livre depois da peça na mesma diagonal. Durante capturas múltiplas, as peças capturadas permanecem no tabuleiro até ao fim da sequência e bloqueiam a passagem; não podem ser capturadas novamente. A dama pode revisitar casas vazias (Casa Cruz), regressando a uma direção anterior depois de capturas intermediárias legais. Este protótipo é local para duas pessoas no mesmo aparelho. Agora inclui teste de Pé de Galinha: 3 damas contra 1, contando apenas as jogadas do caçador, até 12; se a dama sobreviver, o resultado é empate. Continua sem adversário online.</div>
 </aside></section></main>
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
-let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
+let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
 const dirs=[[-1,-1],[-1,1],[1,-1],[1,1]];
 function clone(b){return b.map(row=>row.map(p=>p?{...p}:null))}
 function init(){let b=Array.from({length:N},()=>Array(N).fill(null));
@@ -80,7 +80,7 @@ function loadScenario(which){
   B[7][7]={color:'black',king:false};
   turn='white';
  }else{B=init();turn='white'}
- selected=null;chainOptions=null;history=[];gameOver=false;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;
+ selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;
  const pg=detectPG();if(pg){pgActive=true;pgHunter=pg.hunter;pgTarget=pg.target;}
  legal=allLegal(B,turn);render();
  say(which==='pg'?'Posição de teste carregada: 3 damas claras contra 1 dama escura. A contagem começa na primeira jogada do caçador.':which==='king'?'Teste de alcance: selecione a dama clara. Ela deve poder capturar o dado escuro e aterrar em qualquer casa livre depois dele na mesma diagonal.':which==='promotion'?'Teste de promoção: mova o dado claro de (1,1) para (0,0). Deve aparecer a coroa imediatamente e a peça deve passar a mover como dama.':'Partida normal carregada. Vez do jogador claro.');
@@ -89,7 +89,7 @@ function loadScenario(which){
 function inside(r,c){return r>=0&&r<8&&c>=0&&c<8}
 function forward(color){return color==='white'?-1:1}
 function val(p){return p.king?3:2} // unidades de meio ponto: normal=2, dama=3
-function pieceMoves(b,r,c,onlyCaptures=false){
+function pieceMoves(b,r,c,onlyCaptures=false,capturedSet=new Set()){
  const p=b[r][c];if(!p)return [];
  let out=[];
  if(p.king){
@@ -103,7 +103,7 @@ function pieceMoves(b,r,c,onlyCaptures=false){
     if(!onlyCaptures)out.push({to:[rr,cc],cap:null});
     rr+=dr;cc+=dc;
    }
-   if(inside(rr,cc)&&b[rr][cc].color!==p.color){
+   if(inside(rr,cc)&&b[rr][cc].color!==p.color&&!capturedSet.has(rr+','+cc)){
     const capR=rr,capC=cc;
     rr+=dr;cc+=dc;
     while(inside(rr,cc)&&!b[rr][cc]){
@@ -117,7 +117,7 @@ function pieceMoves(b,r,c,onlyCaptures=false){
    const rr=r+dr,cc=c+dc;
    if(!inside(rr,cc))continue;
    if(!onlyCaptures && dr===forward(p.color) && !b[rr][cc])out.push({to:[rr,cc],cap:null});
-   if(b[rr][cc]&&b[rr][cc].color!==p.color){
+   if(b[rr][cc]&&b[rr][cc].color!==p.color&&!capturedSet.has(rr+','+cc)){
     const lr=rr+dr,lc=cc+dc;
     if(inside(lr,lc)&&!b[lr][lc])out.push({to:[lr,lc],cap:[rr,cc]});
    }
@@ -125,28 +125,36 @@ function pieceMoves(b,r,c,onlyCaptures=false){
  }
  return out.filter(m=>onlyCaptures?!!m.cap:!m.cap);
 }
-function seqsFrom(b,r,c,depth=0){
+function seqsFrom(b,r,c,depth=0,previousCaptureDir=null,capturedSet=new Set()){
  const p=b[r][c];if(!p)return [];
- const caps=pieceMoves(b,r,c,true);if(!caps.length)return depth? [{moves:[],score:0}]:[];
+ const caps=pieceMoves(b,r,c,true,capturedSet);if(!caps.length)return depth? [{moves:[],score:0}]:[];
  let all=[];
  for(const m of caps){
-  const nb=clone(b),moving=nb[r][c];nb[r][c]=null;nb[m.cap[0]][m.cap[1]]=null;
-  let promoted=false;
-  // If a man reaches promotion row during a capture sequence, it stays a man
-  // while continuing adjacent man captures. If only a flying-king capture
-  // remains, stop on promotion square and promote for the next turn.
-  const atPromotion=(moving.color==='white'&&m.to[0]===0)||(moving.color==='black'&&m.to[0]===7);
+  const captureDir=[Math.sign(m.to[0]-r),Math.sign(m.to[1]-c)];
+  // Não permitir a inversão imediata para apanhar uma peça que ficou para trás.
+  // A Casa Cruz continua permitida após capturas intermediárias legítimas.
+  if(p.king&&previousCaptureDir&&captureDir[0]===-previousCaptureDir[0]&&captureDir[1]===-previousCaptureDir[1])continue;
+  const capKey=m.cap[0]+','+m.cap[1];
+  if(capturedSet.has(capKey))continue;
+  const nb=clone(b),moving=nb[r][c];nb[r][c]=null;
+  // Regra moçambicana: a peça capturada NÃO sai do tabuleiro durante a sequência.
+  // Ela permanece como obstáculo, mas é marcada para não poder ser capturada de novo.
   nb[m.to[0]][m.to[1]]=moving;
-  const next=pieceMoves(nb,m.to[0],m.to[1],true);
-  let cont=next;
+  const nextCaptured=new Set(capturedSet);nextCaptured.add(capKey);
+  let next=pieceMoves(nb,m.to[0],m.to[1],true,nextCaptured);
+  if(moving.king)next=next.filter(x=>{
+   const d=[Math.sign(x.to[0]-m.to[0]),Math.sign(x.to[1]-m.to[1])];
+   return !(d[0]===-captureDir[0]&&d[1]===-captureDir[1]);
+  });
+  let cont=next,promoted=false;
+  const atPromotion=(moving.color==='white'&&m.to[0]===0)||(moving.color==='black'&&m.to[0]===7);
   if(!moving.king&&atPromotion){
-   const manNext=next.filter(x=>Math.abs(x.to[0]-m.to[0])===2 && Math.abs(x.to[1]-m.to[1])===2);
-   if(manNext.length)cont=manNext;
-   else cont=[];
+   const manNext=next.filter(x=>Math.abs(x.to[0]-m.to[0])===2&&Math.abs(x.to[1]-m.to[1])===2);
+   if(manNext.length)cont=manNext;else cont=[];
    if(!cont.length)promoted=true;
   }
   if(cont.length){
-   const tails=seqsFrom(nb,m.to[0],m.to[1],depth+1);
+   const tails=seqsFrom(nb,m.to[0],m.to[1],depth+1,captureDir,nextCaptured);
    for(const t of tails)all.push({moves:[{...m,promoteAfter:false},...t.moves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
   }else all.push({moves:[{...m,promoteAfter:promoted||atPromotion&&!moving.king}],score:val(b[m.cap[0]][m.cap[1]])});
  }
@@ -208,11 +216,12 @@ function tap(r,c){
    const mover=turn;
    // Save one undo snapshot at the beginning of the whole turn, not for every jump.
    if(!chainOptions)history.push({B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves});
+   if(!chainOptions)chainCaptured=[];
    const step=opts[0].moves[0];
    const [sr,sc]=selected;
    const moving=B[sr][sc];
    B[sr][sc]=null;
-   if(step.cap)B[step.cap[0]][step.cap[1]]=null;
+   if(step.cap)chainCaptured.push(step.cap.slice());
    B[step.to[0]][step.to[1]]=moving;
    if(step.promoteAfter)moving.king=true;
 
@@ -228,6 +237,8 @@ function tap(r,c){
     return;
    }
    selected=null;chainOptions=null;
+   for(const [cr,cc] of chainCaptured)B[cr][cc]=null;
+   chainCaptured=[];
    finishTurn(mover);
    return;
   }
@@ -263,7 +274,7 @@ function finishTurn(mover){
  render();syncPGDisplay();
 }
 function newGame(){document.getElementById('scenario').value='standard';loadScenario('standard')}
-function undo(){if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
+function undo(){if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
 newGame();
 </script></body></html>
