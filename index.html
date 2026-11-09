@@ -324,7 +324,7 @@ async function createOnlineRoom(){
   const {data,error}=await db.rpc('create_game_room');if(error)throw error;
   const created=Array.isArray(data)?data[0]:data;
   if(!created?.room_id||!created?.room_code)throw new Error('A função não devolveu o código e o identificador da sala.');
-  onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';onlineRoomStatus='waiting';
+  onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';flipped=false;onlineRoomStatus='waiting';
   const {error:updateError}=await db.from('rooms').update({board:packGameState(),current_turn:turn,status:'waiting',updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
   if(updateError)throw updateError;
   watchRoom(onlineRoomId);
@@ -340,7 +340,7 @@ async function joinOnlineRoom(){
   if(!/^[A-Z0-9]{6}$/.test(code))throw new Error('Introduz o código de 6 caracteres recebido do anfitrião.');
   await ensureOnlineAuth();
   const {data,error}=await db.rpc('join_game_room',{p_code:code});if(error)throw error;
-  onlineRoomId=data;onlineCode=code;myColor='black';
+  onlineRoomId=data;onlineCode=code;myColor='black';flipped=true;
   const {data:row,error:readError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
   if(readError)throw readError;
   onlineRoomStatus=row.status;applyRoomRow(row);watchRoom(onlineRoomId);
