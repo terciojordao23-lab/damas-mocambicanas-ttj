@@ -39,6 +39,10 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
 let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null;
+const ROOM_SESSION_KEY='damasTTJ_onlineRoom_v1';
+function saveRoomSession(){try{if(onlineRoomId&&myColor)localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:onlineRoomId,code:onlineCode,color:myColor}));}catch(e){console.warn('Não foi possível guardar a sessão online.',e)}}
+function clearRoomSession(){try{localStorage.removeItem(ROOM_SESSION_KEY)}catch(e){}}
+
 const SUPABASE_URL='https://kbxcqmhytdrqxvzyxhkh.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY='sb_publishable_DWcuE7BkaPO1G_wWXSzNsw_hDNwjz9p';
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
@@ -324,7 +328,7 @@ async function createOnlineRoom(){
   const {data,error}=await db.rpc('create_game_room');if(error)throw error;
   const created=Array.isArray(data)?data[0]:data;
   if(!created?.room_id||!created?.room_code)throw new Error('A função não devolveu o código e o identificador da sala.');
-  onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';flipped=false;onlineRoomStatus='waiting';
+  onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';flipped=false;onlineRoomStatus='waiting';saveRoomSession();
   const {error:updateError}=await db.from('rooms').update({board:packGameState(),current_turn:turn,status:'waiting',updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
   if(updateError)throw updateError;
   watchRoom(onlineRoomId);
@@ -340,7 +344,7 @@ async function joinOnlineRoom(){
   if(!/^[A-Z0-9]{6}$/.test(code))throw new Error('Introduz o código de 6 caracteres recebido do anfitrião.');
   await ensureOnlineAuth();
   const {data,error}=await db.rpc('join_game_room',{p_code:code});if(error)throw error;
-  onlineRoomId=data;onlineCode=code;myColor='black';flipped=true;
+  onlineRoomId=data;onlineCode=code;myColor='black';flipped=true;saveRoomSession();
   const {data:row,error:readError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
   if(readError)throw readError;
   onlineRoomStatus=row.status;applyRoomRow(row);watchRoom(onlineRoomId);
@@ -356,8 +360,23 @@ async function syncRoomState(){
  if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
 }
 
+async function restoreOnlineSession(){
+ try{
+  const raw=localStorage.getItem(ROOM_SESSION_KEY);if(!raw)return;
+  const saved=JSON.parse(raw);if(!saved?.roomId||!['white','black'].includes(saved.color))return;
+  await ensureOnlineAuth();
+  const {data:row,error}=await db.from('rooms').select('*').eq('id',saved.roomId).single();
+  if(error||!row){clearRoomSession();return}
+  if(row.host_id!==onlineUser.id&&row.guest_id!==onlineUser.id){clearRoomSession();return}
+  onlineRoomId=saved.roomId;onlineCode=saved.code||'';myColor=row.host_id===onlineUser.id?'white':'black';flipped=myColor==='black';onlineRoomStatus=row.status;
+  applyRoomRow(row);watchRoom(onlineRoomId);
+  roomMessage('Sessão recuperada · Sala '+(onlineCode||'')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
+  say('Partida online recuperada. Estado mais recente carregado.');
+ }catch(e){roomMessage('Não foi possível recuperar a sessão online: '+(e.message||e))}
+}
 function newGame(){if(onlineRoomId){say('Não podes reiniciar uma partida online em curso. Cria uma nova sala quando terminares.');return}document.getElementById('scenario').value='standard';loadScenario('standard')}
 function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
 newGame();
+restoreOnlineSession();
 </script></body></html>
