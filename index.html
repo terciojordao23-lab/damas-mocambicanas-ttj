@@ -284,7 +284,7 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;say('Fim de jogo! '+(mover==='white'?'Jogador claro':'Jogador escuro')+' venceu.');}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
- if(onlineRoomId)syncRoomState();
+ if(onlineRoomId)syncRoomState(mover);
 }
 async function ensureOnlineAuth(){
  const {data,error}=await db.auth.getSession();
@@ -353,11 +353,31 @@ async function joinOnlineRoom(){
  }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
  finally{btn.disabled=false}
 }
-async function syncRoomState(){
+async function syncRoomState(mover){
  if(!onlineRoomId||!onlineUser)return;
- const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
- const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
- if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
+ try{
+  // Read the authoritative turn/version before writing. This prevents an old
+  // browser tab from overwriting a newer move already stored by the opponent.
+  const {data:current,error:readError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
+  if(readError)throw readError;
+  if(current.status==='finished'||current.current_turn!==mover){
+   onlineRoomStatus=current.status;
+   applyRoomRow(current);
+   roomMessage('A posição deste navegador estava desactualizada. Foi carregada a versão mais recente da partida.');
+   return;
+  }
+  const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
+  const {data:written,error}=await db.from('rooms').update(payload)
+   .eq('id',onlineRoomId).eq('current_turn',mover).eq('updated_at',current.updated_at).eq('status','playing')
+   .select('id').maybeSingle();
+  if(error)throw error;
+  if(!written){
+   const {data:latest,error:latestError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
+   if(latestError)throw latestError;
+   onlineRoomStatus=latest.status;applyRoomRow(latest);
+   roomMessage('Outra actualização chegou primeiro. Foi mantida a posição oficial mais recente.');
+  }
+ }catch(e){roomMessage('A jogada não foi confirmada no servidor: '+(e.message||e)+'. A posição será sincronizada ao recuperar a ligação.')}
 }
 
 async function restoreOnlineSession(){
