@@ -38,7 +38,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
-let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null;
+let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null;
 const ROOM_SESSION_KEY='damasTTJ_onlineRoom_v1';
 function saveRoomSession(){try{if(onlineRoomId&&myColor)localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:onlineRoomId,code:onlineCode,color:myColor}));}catch(e){console.warn('Não foi possível guardar a sessão online.',e)}}
 function clearRoomSession(){try{localStorage.removeItem(ROOM_SESSION_KEY)}catch(e){}}
@@ -90,7 +90,7 @@ function loadScenario(which){
   B[7][7]={color:'black',king:false};
   turn='white';
  }else{B=init();turn='white'}
- selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;
+ selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;
  const pg=detectPG();if(pg){pgActive=true;pgHunter=pg.hunter;pgTarget=pg.target;}
  legal=allLegal(B,turn);render();
  say(which==='pg'?'Posição de teste carregada: 3 damas claras contra 1 dama escura. A contagem começa na primeira jogada do caçador.':which==='king'?'Teste de alcance: selecione a dama clara. Ela deve poder capturar o dado escuro e aterrar em qualquer casa livre depois dele na mesma diagonal.':which==='promotion'?'Teste de promoção: mova o dado claro de (1,1) para (0,0). Deve aparecer a coroa imediatamente e a peça deve passar a mover como dama.':'Partida normal carregada. Vez do jogador claro.');
@@ -272,8 +272,8 @@ function finishTurn(mover){
  const remainingTarget=pgActive?B.flat().filter(p=>p&&p.color===pgTarget).length:0;
  if(pgActive&&mover===pgHunter){
   pgMoves++;
-  if(remainingTarget===0){gameOver=true;say('O caçador capturou a dama! Vitória do caçador.');}
-  else if(pgMoves>=12){gameOver=true;say('EMPATE! A dama sobreviveu às 12 jogadas do caçador no Pé de Galinha.');}
+  if(remainingTarget===0){gameOver=true;gameResult={type:'win',winnerColor:pgHunter,text:'Fim de jogo: o caçador venceu no Pé de Galinha.'};say(gameResult.text);}
+  else if(pgMoves>=12){gameOver=true;gameResult={type:'draw',winnerColor:null,text:'Empate: a dama sobreviveu às 12 jogadas do caçador no Pé de Galinha.'};say(gameResult.text);}
  }
  if(!wasPG&&!gameOver){
   const pg=detectPG();
@@ -281,7 +281,7 @@ function finishTurn(mover){
  }
  turn=turn==='white'?'black':'white';
  legal=allLegal(B,turn);
- if(!gameOver&&!legal.length){gameOver=true;say('Fim de jogo! '+(mover==='white'?'Jogador claro':'Jogador escuro')+' venceu.');}
+ if(!gameOver&&!legal.length){gameOver=true;gameResult={type:'win',winnerColor:mover,text:'Fim de jogo: '+(mover==='white'?'jogador claro':'jogador escuro')+' venceu porque o adversário ficou sem jogadas.'};say(gameResult.text);}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
  if(onlineRoomId)syncRoomState();
@@ -296,16 +296,16 @@ async function ensureOnlineAuth(){
  return onlineUser;
 }
 function roomMessage(message){document.getElementById('roomInfo').textContent=message}
-function packGameState(){return {B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves}}
+function packGameState(){return {B:clone(B),turn,gameOver,gameResult,pgActive,pgHunter,pgTarget,pgMoves}}
 function applyRoomRow(row){
  if(!row||!row.board||!row.board.B)return;
  const state=row.board;
  B=clone(state.B);turn=state.turn||row.current_turn||'white';
- gameOver=!!state.gameOver||row.status==='finished';
+ gameOver=!!state.gameOver||row.status==='finished';gameResult=state.gameResult||null;
  pgActive=!!state.pgActive;pgHunter=state.pgHunter||null;pgTarget=state.pgTarget||null;pgMoves=Number(state.pgMoves||0);
  selected=null;chainOptions=null;chainCaptured=[];history=[];legal=allLegal(B,turn);
  render();syncPGDisplay();
- if(gameOver)say('A partida online terminou.');
+ if(gameOver)say(gameResult?.text||'A partida online terminou. O resultado não está disponível nesta versão da sala.');
  else say('Estado sincronizado. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
 }
 function watchRoom(roomId){
@@ -321,9 +321,19 @@ function watchRoom(roomId){
    else if(state==='CHANNEL_ERROR'||state==='TIMED_OUT')roomMessage('A ligação em tempo real falhou. Verifica a internet e actualiza a página.');
   });
 }
+function resetBoardForNewRoom(){
+ B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
+}
+function releaseFinishedRoom(){
+ if(roomChannel){db.removeChannel(roomChannel);roomChannel=null;}
+ clearRoomSession();onlineRoomId=null;onlineCode=null;myColor=null;onlineRoomStatus=null;flipped=false;
+}
 async function createOnlineRoom(){
  const btn=document.getElementById('createRoomBtn');btn.disabled=true;
  try{
+  if(onlineRoomId&&onlineRoomStatus!=='finished')throw new Error('Já existe uma partida online em curso. Termina-a antes de criar outra sala.');
+  if(onlineRoomId&&onlineRoomStatus==='finished')releaseFinishedRoom();
+  resetBoardForNewRoom();
   await ensureOnlineAuth();
   const {data,error}=await db.rpc('create_game_room');if(error)throw error;
   const created=Array.isArray(data)?data[0]:data;
@@ -355,9 +365,10 @@ async function joinOnlineRoom(){
 }
 async function syncRoomState(){
  if(!onlineRoomId||!onlineUser)return;
- const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
+ const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver&&gameResult?.type==='win'&&gameResult.winnerColor===myColor?onlineUser.id:null,updated_at:new Date().toISOString()};
  const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
  if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
+ else onlineRoomStatus=payload.status;
 }
 
 async function restoreOnlineSession(){
@@ -374,7 +385,12 @@ async function restoreOnlineSession(){
   say('Partida online recuperada. Estado mais recente carregado.');
  }catch(e){roomMessage('Não foi possível recuperar a sessão online: '+(e.message||e))}
 }
-function newGame(){if(onlineRoomId){say('Não podes reiniciar uma partida online em curso. Cria uma nova sala quando terminares.');return}document.getElementById('scenario').value='standard';loadScenario('standard')}
+function newGame(){
+ if(onlineRoomId&&onlineRoomStatus!=='finished'){say('A partida online ainda está em curso. Só podes iniciar outra depois de terminar.');return;}
+ if(onlineRoomId&&onlineRoomStatus==='finished')releaseFinishedRoom();
+ document.getElementById('scenario').value='standard';loadScenario('standard');
+ if(!onlineRoomId)roomMessage('Tabuleiro reiniciado. Para jogar online, cria uma nova sala e partilha o código.');
+}
 function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
 newGame();
