@@ -31,7 +31,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <option value="standard">Partida normal</option><option value="pg">Pé de Galinha — 3 damas contra 1</option><option value="king">Teste: alcance de captura da dama</option><option value="promotion">Teste: promoção a dama</option>
 </select>
 <div id="pgInfo" class="status" style="margin-top:10px;min-height:0">Pé de Galinha: não iniciado.</div>
-<div class="actions"><button onclick="newGame()">Nova partida</button><button class="secondary" id="resignBtn" onclick="resignOnlineGame()">Desistir</button><button class="secondary" onclick="undo()">Desfazer</button><button class="secondary" onclick="flip()">Rodar visão</button></div>
+<div class="actions"><button onclick="newGame()">Nova partida</button><button class="secondary" onclick="undo()">Desfazer</button><button class="secondary" onclick="flip()">Rodar visão</button></div>
 <div class="help"><b>Como testar:</b> selecione uma peça da sua cor. Os destinos legais aparecem com pontos dourados. Capturas são obrigatórias. Ao chegar à última linha num movimento simples, a peça é promovida imediatamente. Se houver mais de uma sequência, o jogo exige a captura de maior valor (dama = 1,5; peça normal = 1).<br><br>As peças iniciais ficam nas casas jogáveis cinza-azuladas; as casas brancas são não jogáveis. O Carreirão fica à esquerda, conforme a orientação aprovada. A dama pode capturar à distância e escolher qualquer casa livre depois da peça na mesma diagonal. Durante capturas múltiplas, as peças capturadas permanecem no tabuleiro até ao fim da sequência e bloqueiam a passagem; não podem ser capturadas novamente. A dama pode revisitar casas vazias (Casa Cruz), regressando a uma direção anterior depois de capturas intermediárias legais. O modo local continua disponível. No modo online, um jogador cria uma sala e partilha o código; o segundo entra com esse código. Cada jogador controla uma cor e as posições sincronizam no fim de cada jogada completa. O teste de Pé de Galinha conta apenas as jogadas do caçador, até 12; se a dama sobreviver, o resultado é empate.</div>
 </aside></section></main>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -284,7 +284,7 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;say('Fim de jogo! '+(mover==='white'?'Jogador claro':'Jogador escuro')+' venceu.');}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
- if(onlineRoomId)syncRoomState(mover);
+ if(onlineRoomId)syncRoomState();
 }
 async function ensureOnlineAuth(){
  const {data,error}=await db.auth.getSession();
@@ -353,31 +353,11 @@ async function joinOnlineRoom(){
  }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
  finally{btn.disabled=false}
 }
-async function syncRoomState(mover){
+async function syncRoomState(){
  if(!onlineRoomId||!onlineUser)return;
- try{
-  // Read the authoritative turn/version before writing. This prevents an old
-  // browser tab from overwriting a newer move already stored by the opponent.
-  const {data:current,error:readError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
-  if(readError)throw readError;
-  if(current.status==='finished'||current.current_turn!==mover){
-   onlineRoomStatus=current.status;
-   applyRoomRow(current);
-   roomMessage('A posição deste navegador estava desactualizada. Foi carregada a versão mais recente da partida.');
-   return;
-  }
-  const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
-  const {data:written,error}=await db.from('rooms').update(payload)
-   .eq('id',onlineRoomId).eq('current_turn',mover).eq('updated_at',current.updated_at).eq('status','playing')
-   .select('id').maybeSingle();
-  if(error)throw error;
-  if(!written){
-   const {data:latest,error:latestError}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
-   if(latestError)throw latestError;
-   onlineRoomStatus=latest.status;applyRoomRow(latest);
-   roomMessage('Outra actualização chegou primeiro. Foi mantida a posição oficial mais recente.');
-  }
- }catch(e){roomMessage('A jogada não foi confirmada no servidor: '+(e.message||e)+'. A posição será sincronizada ao recuperar a ligação.')}
+ const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver?onlineUser.id:null,updated_at:new Date().toISOString()};
+ const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
+ if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
 }
 
 async function restoreOnlineSession(){
@@ -394,34 +374,7 @@ async function restoreOnlineSession(){
   say('Partida online recuperada. Estado mais recente carregado.');
  }catch(e){roomMessage('Não foi possível recuperar a sessão online: '+(e.message||e))}
 }
-async function resignOnlineGame(){
- if(!onlineRoomId||!onlineUser){say('A desistência só está disponível numa partida online.');return}
- if(gameOver){say('Esta partida já terminou. Podes iniciar uma nova partida.');return}
- if(!confirm('Tens a certeza de que queres desistir? O adversário será declarado vencedor.'))return;
- const btn=document.getElementById('resignBtn');btn.disabled=true;
- try{
-  const {data:row,error:readError}=await db.from('rooms').select('host_id,guest_id,status').eq('id',onlineRoomId).single();
-  if(readError)throw readError;
-  if(row.status==='finished'){gameOver=true;say('Esta partida já terminou.');return}
-  const winnerId=row.host_id===onlineUser.id?row.guest_id:row.host_id;
-  if(!winnerId)throw new Error('O adversário ainda não entrou na sala; não é possível concluir uma desistência.');
-  const {error}=await db.from('rooms').update({status:'finished',winner_id:winnerId,updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
-  if(error)throw error;
-  gameOver=true;selected=null;chainOptions=null;render();
-  say('Desististe. O adversário foi declarado vencedor.');
-  roomMessage('Partida terminada por desistência. Podes iniciar uma nova partida.');
- }catch(e){say('Não foi possível registar a desistência: '+(e.message||e))}
- finally{btn.disabled=false}
-}
-function newGame(){
- if(onlineRoomId&&!gameOver){say('Para iniciar outra partida online, termina esta partida ou utiliza Desistir.');return}
- if(onlineRoomId){
-  if(roomChannel){db.removeChannel(roomChannel);roomChannel=null}
-  clearRoomSession();onlineRoomId=null;onlineCode=null;myColor=null;onlineRoomStatus=null;
-  roomMessage('Sessão anterior encerrada neste navegador. Podes criar uma nova sala ou entrar noutra.');
- }
- document.getElementById('scenario').value='standard';loadScenario('standard')
-}
+function newGame(){if(onlineRoomId){say('Não podes reiniciar uma partida online em curso. Cria uma nova sala quando terminares.');return}document.getElementById('scenario').value='standard';loadScenario('standard')}
 function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
 newGame();
