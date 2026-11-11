@@ -90,8 +90,8 @@ function allLegal(b:any[][],color:string) {
 }
 function detectPG(b:any[][]) {
   const w=b.flat().filter(p=>p?.color==="white"), bl=b.flat().filter(p=>p?.color==="black");
-  if(w.length===3&&w.every(p=>p.king)&&bl.length===1&&bl[0].king) return {hunter:"black",target:"white"};
-  if(bl.length===3&&bl.every(p=>p.king)&&w.length===1&&w[0].king) return {hunter:"white",target:"black"};
+  if(w.length===3&&w.every(p=>p.king)&&bl.length===1&&bl[0].king) return {hunter:"white",target:"black"};
+  if(bl.length===3&&bl.every(p=>p.king)&&w.length===1&&w[0].king) return {hunter:"black",target:"white"};
   return null;
 }
 function same(a:any,b:any) { return JSON.stringify(a)===JSON.stringify(b); }
