@@ -21,8 +21,8 @@ BEGIN
             ELSE 'null'::jsonb
           END ORDER BY c
         ) AS row_data
-        FROM generate_series(0,7) AS r
-        CROSS JOIN generate_series(0,7) AS c
+        FROM generate_series(0,7) AS rows(r)
+        CROSS JOIN generate_series(0,7) AS cols(c)
         GROUP BY r
       ) rows_data
     ),
