@@ -199,3 +199,8 @@ GRANT EXECUTE ON FUNCTION public.create_game_room_with_board(jsonb) TO authentic
 -- The browser must not call the legacy client-supplied-board RPC.
 -- Online moves are validated and written only by the Edge Function using service_role.
 REVOKE ALL ON FUNCTION public.sync_game_room(uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
+
+-- Resignation is authenticated and participant-checked inside the SECURITY DEFINER RPC.
+-- Anonymous API roles must not be able to invoke it without an authenticated session.
+REVOKE ALL ON FUNCTION public.resign_game_room(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.resign_game_room(uuid) TO authenticated;
