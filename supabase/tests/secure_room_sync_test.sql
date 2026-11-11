@@ -68,6 +68,13 @@ BEGIN
   END;
   IF NOT v_rejected THEN RAISE EXCEPTION 'Invalid initial board was accepted'; END IF;
 
+  IF NOT has_function_privilege('authenticated','public.create_game_room()','EXECUTE')
+     OR has_function_privilege('anon','public.create_game_room()','EXECUTE')
+     OR has_function_privilege('authenticated','public.join_game_room(text)','EXECUTE')
+        = false
+     OR has_function_privilege('anon','public.join_game_room(text)','EXECUTE') THEN
+    RAISE EXCEPTION 'Legacy room creation/join RPC grants are not restricted to authenticated users';
+  END IF;
   IF NOT has_function_privilege('authenticated','public.create_game_room_with_board(jsonb)','EXECUTE') THEN
     RAISE EXCEPTION 'authenticated cannot execute room creation RPC';
   END IF;
