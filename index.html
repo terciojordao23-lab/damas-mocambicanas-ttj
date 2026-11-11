@@ -165,7 +165,16 @@ function seqsFrom(b,r,c,depth=0,previousCaptureDir=null,capturedSet=new Set()){
   }
   if(cont.length){
    const tails=seqsFrom(nb,m.to[0],m.to[1],depth+1,captureDir,nextCaptured);
-   for(const t of tails)all.push({moves:[{...m,promoteAfter:false},...t.moves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
+   for(const t of tails){
+    const tailMoves=t.moves.slice();
+    // If a man reaches the promotion row but continues capturing as a man,
+    // promote after the complete capture sequence, not during the sequence.
+    if(atPromotion&&!moving.king&&tailMoves.length){
+     const last=tailMoves.length-1;
+     tailMoves[last]={...tailMoves[last],promoteAfter:true};
+    }
+    all.push({moves:[{...m,promoteAfter:false},...tailMoves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
+   }
   }else all.push({moves:[{...m,promoteAfter:promoted||atPromotion&&!moving.king}],score:val(b[m.cap[0]][m.cap[1]])});
  }
  return all;
