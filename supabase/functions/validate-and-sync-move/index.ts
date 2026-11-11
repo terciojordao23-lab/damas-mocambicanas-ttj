@@ -66,8 +66,16 @@ function sequences(b:any[][],r:number,c:number,depth=0,previous:any=null,capture
       if(!cont.length) promoted=true;
     }
     if(cont.length) {
-      for(const tail of sequences(nb,m.to[0],m.to[1],depth+1,d,nextCaptured))
-        all.push({moves:[{...m,promoteAfter:false},...tail.moves],score:value(b[m.cap[0]][m.cap[1]])+tail.score});
+      for(const tail of sequences(nb,m.to[0],m.to[1],depth+1,d,nextCaptured)) {
+        const tailMoves=tail.moves.slice();
+        // A man that continues capturing after reaching the promotion row
+        // is crowned only after the complete capture sequence.
+        if(atEnd&&!moving.king&&tailMoves.length) {
+          const last=tailMoves.length-1;
+          tailMoves[last]={...tailMoves[last],promoteAfter:true};
+        }
+        all.push({moves:[{...m,promoteAfter:false},...tailMoves],score:value(b[m.cap[0]][m.cap[1]])+tail.score});
+      }
     } else all.push({moves:[{...m,promoteAfter:promoted||atEnd}],score:value(b[m.cap[0]][m.cap[1]])});
   }
   return all;
