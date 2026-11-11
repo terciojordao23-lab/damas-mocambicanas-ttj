@@ -121,6 +121,15 @@ Deno.serve(async (req) => {
     if(!prior?.B||prior.gameOver||prior.turn!==expected) return json({error:"Estado anterior inválido."},409);
     if(!Array.isArray(prior.B)||prior.B.length!==8||prior.B.some((row:any)=>!Array.isArray(row)||row.length!==8))
       return json({error:"Tabuleiro anterior inválido."},409);
+    const malformedPiece=prior.B.some((row:any[],r:number)=>row.some((piece:any,c:number)=>
+      piece!==null&&(
+        typeof piece!=="object"||Array.isArray(piece)||
+        !["white","black"].includes(piece.color)||
+        typeof piece.king!=="boolean"||
+        (r+c)%2!==0
+      )
+    ));
+    if(malformedPiece) return json({error:"O tabuleiro contém peças com dados inválidos."},409);
 
     const legal=allLegal(prior.B,expected);
     const route=legal.find((candidate:any)=>candidate.moves.length===path.length&&same(candidate.from,path[0]?.from)&&candidate.moves.every((m:any,i:number)=>{
