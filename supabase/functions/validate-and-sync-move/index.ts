@@ -94,7 +94,16 @@ function detectPG(b:any[][]) {
   if(bl.length===3&&bl.every(p=>p.king)&&w.length===1&&w[0].king) return {hunter:"black",target:"white"};
   return null;
 }
-function same(a:any,b:any) { return JSON.stringify(a)===JSON.stringify(b); }
+function canonical(value:any):any {
+  if(Array.isArray(value)) return value.map(canonical);
+  if(value&&typeof value==="object") {
+    const out:any={};
+    for(const key of Object.keys(value).sort()) out[key]=canonical(value[key]);
+    return out;
+  }
+  return value;
+}
+function same(a:any,b:any) { return JSON.stringify(canonical(a))===JSON.stringify(canonical(b)); }
 
 Deno.serve(async (req) => {
   if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
