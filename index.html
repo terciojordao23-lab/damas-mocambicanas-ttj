@@ -373,7 +373,12 @@ async function syncRoomState(expectedTurn,movePath){
   if(!data?.success)throw new Error(data?.error||'O servidor não confirmou a jogada.');
   onlineRoomStatus=data.status||(gameOver?'finished':'playing');
  }catch(error){
-  roomMessage('A jogada foi feita neste aparelho, mas a validação/sincronização falhou: '+(error.message||error));
+  // Restore the authoritative server state after a rejected or stale move.
+  try{
+   const {data:row}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
+   if(row){onlineRoomStatus=row.status;applyRoomRow(row);}
+  }catch(recoveryError){console.warn('Não foi possível recuperar o estado do servidor:',recoveryError);}
+  roomMessage('A jogada não foi confirmada pelo servidor. O estado mais recente foi recuperado quando possível. '+(error.message||error));
  }
 }
 
