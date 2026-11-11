@@ -75,4 +75,8 @@ BEGIN
      OR has_function_privilege('anon','public.sync_game_room(uuid,jsonb,text)','EXECUTE') THEN
     RAISE EXCEPTION 'Legacy client-supplied-board sync RPC is still executable';
   END IF;
+  IF NOT has_function_privilege('authenticated','public.resign_game_room(uuid)','EXECUTE')
+     OR has_function_privilege('anon','public.resign_game_room(uuid)','EXECUTE') THEN
+    RAISE EXCEPTION 'Resignation RPC grants are not restricted to authenticated users';
+  END IF;
 END $$;
