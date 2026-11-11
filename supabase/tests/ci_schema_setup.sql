@@ -14,6 +14,17 @@ AS $$
   SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;
 
+-- Existing RPCs are stubbed so migration privilege changes are tested in CI.
+CREATE OR REPLACE FUNCTION public.create_game_room()
+RETURNS TABLE(room_id uuid, room_code text)
+LANGUAGE sql SECURITY DEFINER
+AS 'SELECT gen_random_uuid(), ''ABC123''::text';
+
+CREATE OR REPLACE FUNCTION public.join_game_room(p_code text)
+RETURNS uuid
+LANGUAGE sql SECURITY DEFINER
+AS 'SELECT gen_random_uuid()';
+
 CREATE OR REPLACE FUNCTION public.resign_game_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE sql
