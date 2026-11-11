@@ -162,10 +162,11 @@ Deno.serve(async (req) => {
     const expectedState={B:nextBoard,turn:nextTurn,gameOver,gameResult,pgActive,pgHunter,pgTarget,pgMoves};
     if(!same(submitted,expectedState)) return json({error:"O estado enviado não corresponde à jogada validada pelo servidor."},422);
     const winnerId=gameOver&&gameResult?.type==="win"?(gameResult.winnerColor==="white"?room.host_id:room.guest_id):null;
-    const {error:updateError}=await admin.from("rooms").update({
+    const {data:updated,error:updateError}=await admin.from("rooms").update({
       board:expectedState,current_turn:nextTurn,status:gameOver?"finished":"playing",winner_id:winnerId,updated_at:new Date().toISOString()
-    }).eq("id",roomId).eq("current_turn",expected).eq("status","playing");
+    }).eq("id",roomId).eq("current_turn",expected).eq("status","playing").select("id").maybeSingle();
     if(updateError) throw updateError;
+    if(!updated) return json({error:"A partida foi actualizada por outra operação. Recupera o estado mais recente."},409);
     return json({success:true,status:gameOver?"finished":"playing",winner_id:winnerId});
   } catch(e) {
     console.error(e);
