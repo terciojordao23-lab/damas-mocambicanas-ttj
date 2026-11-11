@@ -16,10 +16,11 @@ BEGIN
     RAISE EXCEPTION 'É necessário iniciar uma sessão.';
   END IF;
 
-  IF jsonb_typeof(p_board) <> 'object'
-     OR jsonb_typeof(p_board->'B') <> 'array'
-     OR p_board->>'turn' <> 'white'
-     OR COALESCE((p_board->>'gameOver')::boolean, true) THEN
+  IF jsonb_typeof(p_board) IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(p_board->'B') <> 8
+     OR p_board->>'turn' IS DISTINCT FROM 'white'
+     OR p_board->>'gameOver' IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION 'Estado inicial do tabuleiro inválido.';
   END IF;
 
@@ -60,11 +61,14 @@ BEGIN
     RAISE EXCEPTION 'Utilizador não autenticado.';
   END IF;
 
-  IF p_expected_turn NOT IN ('white', 'black')
-     OR jsonb_typeof(p_board) <> 'object'
-     OR jsonb_typeof(p_board->'B') <> 'array'
+  IF p_expected_turn IS NULL
+     OR p_expected_turn NOT IN ('white', 'black')
+     OR jsonb_typeof(p_board) IS DISTINCT FROM 'object'
+     OR jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array'
+     OR jsonb_array_length(p_board->'B') <> 8
+     OR p_board->>'turn' IS NULL
      OR p_board->>'turn' NOT IN ('white', 'black')
-     OR jsonb_typeof(p_board->'gameOver') <> 'boolean' THEN
+     OR jsonb_typeof(p_board->'gameOver') IS DISTINCT FROM 'boolean' THEN
     RAISE EXCEPTION 'Estado da jogada inválido.';
   END IF;
 
