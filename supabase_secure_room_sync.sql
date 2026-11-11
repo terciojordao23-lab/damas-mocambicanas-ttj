@@ -16,9 +16,24 @@ BEGIN
     RAISE EXCEPTION 'É necessário iniciar uma sessão.';
   END IF;
 
-  IF jsonb_typeof(p_board) IS DISTINCT FROM 'object'
-     OR jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array'
-     OR jsonb_array_length(p_board->'B') <> 8
+  IF jsonb_typeof(p_board) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Estado inicial do tabuleiro inválido.';
+  END IF;
+
+  IF jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Estado inicial do tabuleiro inválido.';
+  END IF;
+
+  IF jsonb_array_length(p_board->'B') <> 8
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(p_board->'B') AS board_row(value)
+       WHERE CASE
+         WHEN jsonb_typeof(board_row.value) = 'array'
+           THEN jsonb_array_length(board_row.value)
+         ELSE -1
+       END <> 8
+     )
      OR p_board->>'turn' IS DISTINCT FROM 'white'
      OR p_board->>'gameOver' IS DISTINCT FROM 'false' THEN
     RAISE EXCEPTION 'Estado inicial do tabuleiro inválido.';
@@ -63,9 +78,24 @@ BEGIN
 
   IF p_expected_turn IS NULL
      OR p_expected_turn NOT IN ('white', 'black')
-     OR jsonb_typeof(p_board) IS DISTINCT FROM 'object'
-     OR jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array'
-     OR jsonb_array_length(p_board->'B') <> 8
+     OR jsonb_typeof(p_board) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Estado da jogada inválido.';
+  END IF;
+
+  IF jsonb_typeof(p_board->'B') IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Estado da jogada inválido.';
+  END IF;
+
+  IF jsonb_array_length(p_board->'B') <> 8
+     OR EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(p_board->'B') AS board_row(value)
+       WHERE CASE
+         WHEN jsonb_typeof(board_row.value) = 'array'
+           THEN jsonb_array_length(board_row.value)
+         ELSE -1
+       END <> 8
+     )
      OR p_board->>'turn' IS NULL
      OR p_board->>'turn' NOT IN ('white', 'black')
      OR jsonb_typeof(p_board->'gameOver') IS DISTINCT FROM 'boolean' THEN
