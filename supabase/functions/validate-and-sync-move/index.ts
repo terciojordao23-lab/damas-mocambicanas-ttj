@@ -14,7 +14,7 @@ const clone = <T>(v:T):T => JSON.parse(JSON.stringify(v));
 const forward = (color:string) => color === "white" ? -1 : 1;
 const value = (p:any) => p?.king ? 3 : 2;
 
-function pieceMoves(b:any[][],r:number,c:number,onlyCaptures=false,captured=new Set<string>()) {
+export function pieceMoves(b:any[][],r:number,c:number,onlyCaptures=false,captured=new Set<string>()) {
   const p=b[r][c]; if(!p) return [] as any[];
   const out:any[]=[];
   if(p.king) {
@@ -43,7 +43,7 @@ function pieceMoves(b:any[][],r:number,c:number,onlyCaptures=false,captured=new 
   }
   return out.filter(m=>onlyCaptures?!!m.cap:!m.cap);
 }
-function sequences(b:any[][],r:number,c:number,depth=0,previous:any=null,captured=new Set<string>()):any[] {
+export function sequences(b:any[][],r:number,c:number,depth=0,previous:any=null,captured=new Set<string>()):any[] {
   const p=b[r][c]; if(!p) return [];
   const caps=pieceMoves(b,r,c,true,captured);
   if(!caps.length) return depth?[{moves:[],score:0}]:[];
@@ -80,7 +80,7 @@ function sequences(b:any[][],r:number,c:number,depth=0,previous:any=null,capture
   }
   return all;
 }
-function allLegal(b:any[][],color:string) {
+export function allLegal(b:any[][],color:string) {
   const captures:any[]=[];
   for(let r=0;r<8;r++) for(let c=0;c<8;c++) if(b[r][c]?.color===color)
     for(const s of sequences(b,r,c)) if(s.moves.length) captures.push({from:[r,c],moves:s.moves,score:s.score});
@@ -96,7 +96,7 @@ function allLegal(b:any[][],color:string) {
     }
   return moves;
 }
-function detectPG(b:any[][]) {
+export function detectPG(b:any[][]) {
   const w=b.flat().filter(p=>p?.color==="white"), bl=b.flat().filter(p=>p?.color==="black");
   if(w.length===3&&w.every(p=>p.king)&&bl.length===1&&bl[0].king) return {hunter:"white",target:"black"};
   if(bl.length===3&&bl.every(p=>p.king)&&w.length===1&&w[0].king) return {hunter:"black",target:"white"};
@@ -111,9 +111,9 @@ function canonical(value:any):any {
   }
   return value;
 }
-function same(a:any,b:any) { return JSON.stringify(canonical(a))===JSON.stringify(canonical(b)); }
+export function same(a:any,b:any) { return JSON.stringify(canonical(a))===JSON.stringify(canonical(b)); }
 
-Deno.serve(async (req) => {
+if (import.meta.main) Deno.serve(async (req) => {
   if(req.method==="OPTIONS") return new Response("ok",{headers:cors});
   if(req.method!=="POST") return json({error:"Método não permitido."},405);
   try {
