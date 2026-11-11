@@ -18,7 +18,7 @@ CREATE OR REPLACE FUNCTION public.resign_game_room(p_room_id uuid)
 RETURNS jsonb
 LANGUAGE sql
 SECURITY DEFINER
-AS $ SELECT '{}'::jsonb $;
+AS 'SELECT ''{}''::jsonb';
 
 CREATE TABLE public.rooms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
