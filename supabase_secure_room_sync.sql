@@ -11,6 +11,11 @@ AS $function$
 DECLARE
   new_code text;
   new_id uuid;
+  r integer;
+  c integer;
+  expected_board jsonb := '[]'::jsonb;
+  expected_row jsonb;
+  expected_cell jsonb;
 BEGIN
   IF auth.uid() IS NULL THEN
     RAISE EXCEPTION 'É necessário iniciar uma sessão.';
@@ -35,8 +40,33 @@ BEGIN
        END <> 8
      )
      OR p_board->>'turn' IS DISTINCT FROM 'white'
-     OR p_board->>'gameOver' IS DISTINCT FROM 'false' THEN
+     OR p_board->>'gameOver' IS DISTINCT FROM 'false'
+     OR p_board->'gameResult' IS DISTINCT FROM 'null'::jsonb
+     OR p_board->'pgActive' IS DISTINCT FROM 'false'::jsonb
+     OR p_board->'pgHunter' IS DISTINCT FROM 'null'::jsonb
+     OR p_board->'pgTarget' IS DISTINCT FROM 'null'::jsonb
+     OR p_board->'pgMoves' IS DISTINCT FROM '0'::jsonb THEN
     RAISE EXCEPTION 'Estado inicial do tabuleiro inválido.';
+  END IF;
+
+  -- Only the standard 12-versus-12 starting position is accepted for a new room.
+  FOR r IN 0..7 LOOP
+    expected_row := '[]'::jsonb;
+    FOR c IN 0..7 LOOP
+      IF (r + c) % 2 = 0 AND r < 3 THEN
+        expected_cell := jsonb_build_object('color', 'black', 'king', false);
+      ELSIF (r + c) % 2 = 0 AND r >= 5 THEN
+        expected_cell := jsonb_build_object('color', 'white', 'king', false);
+      ELSE
+        expected_cell := 'null'::jsonb;
+      END IF;
+      expected_row := expected_row || jsonb_build_array(expected_cell);
+    END LOOP;
+    expected_board := expected_board || jsonb_build_array(expected_row);
+  END LOOP;
+
+  IF p_board->'B' IS DISTINCT FROM expected_board THEN
+    RAISE EXCEPTION 'A sala deve começar com a posição normal de 12 peças por jogador.';
   END IF;
 
   LOOP
