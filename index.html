@@ -284,7 +284,7 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;gameResult={type:'win',winnerColor:mover,text:'Fim de jogo: '+(mover==='white'?'jogador claro':'jogador escuro')+' venceu porque o adversário ficou sem jogadas.'};say(gameResult.text);}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
- if(onlineRoomId)syncRoomState();
+ if(onlineRoomId)syncRoomState(mover);
 }
 async function ensureOnlineAuth(){
  const {data,error}=await db.auth.getSession();
@@ -335,12 +335,10 @@ async function createOnlineRoom(){
   if(onlineRoomId&&onlineRoomStatus==='finished')releaseFinishedRoom();
   resetBoardForNewRoom();
   await ensureOnlineAuth();
-  const {data,error}=await db.rpc('create_game_room');if(error)throw error;
+  const {data,error}=await db.rpc('create_game_room_with_board',{p_board:packGameState()});if(error)throw error;
   const created=Array.isArray(data)?data[0]:data;
   if(!created?.room_id||!created?.room_code)throw new Error('A função não devolveu o código e o identificador da sala.');
   onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';flipped=false;onlineRoomStatus='waiting';saveRoomSession();
-  const {error:updateError}=await db.from('rooms').update({board:packGameState(),current_turn:turn,status:'waiting',updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
-  if(updateError)throw updateError;
   watchRoom(onlineRoomId);
   roomMessage('Sala criada! Código: '+onlineCode+'. Envia este código ao outro jogador. Tu jogas com as claras.');
   say('Sala online criada. Aguarda o adversário.');
@@ -363,12 +361,15 @@ async function joinOnlineRoom(){
  }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
  finally{btn.disabled=false}
 }
-async function syncRoomState(){
+async function syncRoomState(expectedTurn){
  if(!onlineRoomId||!onlineUser)return;
- const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver&&gameResult?.type==='win'&&gameResult.winnerColor===myColor?onlineUser.id:null,updated_at:new Date().toISOString()};
- const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
- if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
- else onlineRoomStatus=payload.status;
+ try{
+  const {data,error}=await db.rpc('sync_game_room',{p_room_id:onlineRoomId,p_board:packGameState(),p_expected_turn:expectedTurn});
+  if(error)throw error;
+  onlineRoomStatus=data?.status|| (gameOver?'finished':'playing');
+ }catch(error){
+  roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+(error.message||error));
+ }
 }
 
 async function resignOnlineGame(){
