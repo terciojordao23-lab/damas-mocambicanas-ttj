@@ -136,5 +136,6 @@ $function$;
 REVOKE ALL ON FUNCTION public.create_game_room_with_board(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_game_room_with_board(jsonb) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.sync_game_room(uuid, jsonb, text) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.sync_game_room(uuid, jsonb, text) TO authenticated;
+-- The browser must not call the legacy client-supplied-board RPC.
+-- Online moves are validated and written only by the Edge Function using service_role.
+REVOKE ALL ON FUNCTION public.sync_game_room(uuid, jsonb, text) FROM PUBLIC, anon, authenticated;
