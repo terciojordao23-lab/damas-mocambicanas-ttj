@@ -22,5 +22,7 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Test move-validation rules
+        run: deno test supabase/functions/validate-and-sync-move/index_test.ts
       - name: Type-check Edge Function
         run: deno check supabase/functions/validate-and-sync-move/index.ts
