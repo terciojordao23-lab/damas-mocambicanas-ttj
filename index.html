@@ -366,11 +366,14 @@ async function joinOnlineRoom(){
 async function syncRoomState(expectedTurn,movePath){
  if(!onlineRoomId||!onlineUser)return;
  try{
-  const {data,error}=await db.rpc('sync_game_room',{p_room_id:onlineRoomId,p_board:packGameState(),p_expected_turn:expectedTurn,p_move_path:movePath});
+  const {data,error}=await db.functions.invoke('validate-and-sync-move',{body:{
+   room_id:onlineRoomId,board:packGameState(),expected_turn:expectedTurn,move_path:movePath
+  }});
   if(error)throw error;
-  onlineRoomStatus=data?.status|| (gameOver?'finished':'playing');
+  if(!data?.success)throw new Error(data?.error||'O servidor não confirmou a jogada.');
+  onlineRoomStatus=data.status||(gameOver?'finished':'playing');
  }catch(error){
-  roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+(error.message||error));
+  roomMessage('A jogada foi feita neste aparelho, mas a validação/sincronização falhou: '+(error.message||error));
  }
 }
 
