@@ -24,7 +24,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 14 · peças capturadas permanecem até ao fim da sequência</p></header>
 <section class="layout">
 <div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
-<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div></section><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
+<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div><div id="opponentPresence" class="room-note" aria-live="polite"></div></section><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
 <div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
 <label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
 <select id="scenario" onchange="loadScenario(this.value)" style="width:100%;padding:10px;border-radius:9px;background:#11151c;color:var(--text);border:1px solid #454b58">
@@ -38,7 +38,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
-let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null,onlineMovePath=[];
+let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,presenceChannel=null,presenceOfflineTimer=null,onlineRoomStatus=null,gameResult=null,onlineMovePath=[];
 const ROOM_SESSION_KEY='damasTTJ_onlineRoom_v1';
 function saveRoomSession(){try{if(onlineRoomId&&myColor)localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:onlineRoomId,code:onlineCode,color:myColor}));}catch(e){console.warn('Não foi possível guardar a sessão online.',e)}}
 function clearRoomSession(){try{localStorage.removeItem(ROOM_SESSION_KEY)}catch(e){}}
@@ -307,6 +307,67 @@ async function ensureOnlineAuth(){
  return onlineUser;
 }
 function roomMessage(message){document.getElementById('roomInfo').textContent=message}
+function presenceMessage(message){
+ const el=document.getElementById('opponentPresence');
+ if(el)el.textContent=message||'';
+}
+function clearPresenceOfflineTimer(){
+ if(presenceOfflineTimer){clearTimeout(presenceOfflineTimer);presenceOfflineTimer=null;}
+}
+function opponentIsPresent(){
+ if(!presenceChannel||!myColor)return false;
+ const state=presenceChannel.presenceState()||{};
+ return Object.values(state).some(entries=>
+  Array.isArray(entries)&&entries.some(meta=>meta&&meta.color===(myColor==='white'?'black':'white')&&meta.user_id!==onlineUser?.id)
+ );
+}
+function refreshOpponentPresence(){
+ if(!onlineRoomId||onlineRoomStatus==='finished'){
+  clearPresenceOfflineTimer();presenceMessage('');return;
+ }
+ if(onlineRoomStatus==='waiting'){
+  clearPresenceOfflineTimer();presenceMessage('À espera do segundo jogador.');return;
+ }
+ if(opponentIsPresent()){
+  clearPresenceOfflineTimer();presenceMessage('● Adversário online');return;
+ }
+ if(!presenceOfflineTimer){
+  presenceMessage('A verificar a ligação do adversário…');
+  presenceOfflineTimer=setTimeout(()=>{
+   presenceOfflineTimer=null;
+   if(onlineRoomStatus!=='finished'&&onlineRoomStatus!=='waiting'&&!opponentIsPresent())
+    presenceMessage('○ Adversário offline');
+   else refreshOpponentPresence();
+  },8000);
+ }
+}
+function watchPresence(roomId){
+ if(presenceChannel){db.removeChannel(presenceChannel);presenceChannel=null;}
+ clearPresenceOfflineTimer();
+ presenceMessage('A ligar ao estado de presença…');
+ const presenceKey=(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+'-'+Math.random().toString(36).slice(2));
+ presenceChannel=db.channel('presence-room-'+roomId,{config:{presence:{key:presenceKey}}})
+  .on('presence',{event:'sync'},refreshOpponentPresence)
+  .on('presence',{event:'join'},refreshOpponentPresence)
+  .on('presence',{event:'leave'},refreshOpponentPresence)
+  .subscribe(async state=>{
+   if(state==='SUBSCRIBED'){
+    try{
+     const {error}=await presenceChannel.track({
+      user_id:onlineUser.id,color:myColor,joined_at:new Date().toISOString()
+     });
+     if(error)throw error;
+     refreshOpponentPresence();
+    }catch(error){
+     presenceMessage('Não foi possível confirmar a presença online.');
+     console.warn('Falha ao registar presença:',error);
+    }
+   }else if(state==='CHANNEL_ERROR'||state==='TIMED_OUT'){
+    clearPresenceOfflineTimer();
+    presenceMessage('Não foi possível verificar a presença do adversário. A partida continua.');
+   }
+  });
+}
 function packGameState(){return {B:clone(B),turn,gameOver,gameResult,pgActive,pgHunter,pgTarget,pgMoves}}
 function applyRoomRow(row){
  if(!row||!row.board||!row.board.B)return;
@@ -325,18 +386,22 @@ function watchRoom(roomId){
   .on('postgres_changes',{event:'UPDATE',schema:'public',table:'rooms',filter:'id=eq.'+roomId},payload=>{
    const row=payload.new;onlineRoomStatus=row.status;
    if(row.board)applyRoomRow(row);
-   roomMessage('Sala '+(onlineCode||'')+' · '+(row.status==='waiting'?'À espera do segundo jogador':row.status==='finished'?'Partida terminada':'Adversário ligado')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
+   roomMessage('Sala '+(onlineCode||'')+' · '+(row.status==='waiting'?'À espera do segundo jogador':row.status==='finished'?'Partida terminada':'Partida em curso')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
+   refreshOpponentPresence();
   })
   .subscribe(state=>{
    if(state==='SUBSCRIBED')roomMessage('Ligação em tempo real activa. Sala '+(onlineCode||'')+'.');
    else if(state==='CHANNEL_ERROR'||state==='TIMED_OUT')roomMessage('A ligação em tempo real falhou. Verifica a internet e actualiza a página.');
   });
+ watchPresence(roomId);
 }
 function resetBoardForNewRoom(){
  B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];onlineMovePath=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
 }
 function releaseFinishedRoom(){
  if(roomChannel){db.removeChannel(roomChannel);roomChannel=null;}
+ if(presenceChannel){db.removeChannel(presenceChannel);presenceChannel=null;}
+ clearPresenceOfflineTimer();presenceMessage('');
  clearRoomSession();onlineRoomId=null;onlineCode=null;myColor=null;onlineRoomStatus=null;flipped=false;
 }
 async function createOnlineRoom(){
