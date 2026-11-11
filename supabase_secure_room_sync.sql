@@ -193,6 +193,14 @@ BEGIN
 END;
 $function$;
 
+-- Retire public/anonymous execution of the legacy room-creation RPC.
+REVOKE ALL ON FUNCTION public.create_game_room() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_game_room() TO authenticated;
+
+-- Joining a room also requires an authenticated participant.
+REVOKE ALL ON FUNCTION public.join_game_room(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.join_game_room(text) TO authenticated;
+
 REVOKE ALL ON FUNCTION public.create_game_room_with_board(jsonb) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_game_room_with_board(jsonb) TO authenticated;
 
