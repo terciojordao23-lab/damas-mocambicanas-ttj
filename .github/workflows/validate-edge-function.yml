@@ -6,6 +6,8 @@ on:
       - fix/secure-room-sync-rpc
     paths:
       - "supabase/functions/validate-and-sync-move/**"
+      - "supabase/tests/**"
+      - "supabase_secure_room_sync.sql"
       - ".github/workflows/validate-edge-function.yml"
   workflow_dispatch:
 
@@ -15,6 +17,20 @@ permissions:
 jobs:
   deno-check:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: damas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d damas_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +38,18 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      - name: Prepare disposable PostgreSQL schema
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/ci_schema_setup.sql
+      - name: Apply migration to disposable PostgreSQL
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_secure_room_sync.sql
+      - name: Test room creation and RPC permissions
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/secure_room_sync_test.sql
       - name: Test move-validation rules
         run: deno test supabase/functions/validate-and-sync-move/index_test.ts
       - name: Type-check Edge Function
