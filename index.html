@@ -38,7 +38,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
-let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null;
+let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null,onlineMovePath=[];
 const ROOM_SESSION_KEY='damasTTJ_onlineRoom_v1';
 function saveRoomSession(){try{if(onlineRoomId&&myColor)localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:onlineRoomId,code:onlineCode,color:myColor}));}catch(e){console.warn('Não foi possível guardar a sessão online.',e)}}
 function clearRoomSession(){try{localStorage.removeItem(ROOM_SESSION_KEY)}catch(e){}}
@@ -165,7 +165,16 @@ function seqsFrom(b,r,c,depth=0,previousCaptureDir=null,capturedSet=new Set()){
   }
   if(cont.length){
    const tails=seqsFrom(nb,m.to[0],m.to[1],depth+1,captureDir,nextCaptured);
-   for(const t of tails)all.push({moves:[{...m,promoteAfter:false},...t.moves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
+   for(const t of tails){
+    const tailMoves=t.moves.slice();
+    // If a man reaches the promotion row but continues capturing as a man,
+    // promote after the complete capture sequence, not during the sequence.
+    if(atPromotion&&!moving.king&&tailMoves.length){
+     const last=tailMoves.length-1;
+     tailMoves[last]={...tailMoves[last],promoteAfter:true};
+    }
+    all.push({moves:[{...m,promoteAfter:false},...tailMoves],score:val(b[m.cap[0]][m.cap[1]])+t.score});
+   }
   }else all.push({moves:[{...m,promoteAfter:promoted||atPromotion&&!moving.king}],score:val(b[m.cap[0]][m.cap[1]])});
  }
  return all;
@@ -228,10 +237,11 @@ function tap(r,c){
    const mover=turn;
    // Save one undo snapshot at the beginning of the whole turn, not for every jump.
    if(!chainOptions)history.push({B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves});
-   if(!chainOptions)chainCaptured=[];
+   if(!chainOptions){chainCaptured=[];onlineMovePath=[];}
    const step=opts[0].moves[0];
    const [sr,sc]=selected;
    const moving=B[sr][sc];
+   onlineMovePath.push({from:[sr,sc],to:step.to.slice(),cap:step.cap?step.cap.slice():null,promoteAfter:!!step.promoteAfter});
    B[sr][sc]=null;
    if(step.cap)chainCaptured.push(step.cap.slice());
    B[step.to[0]][step.to[1]]=moving;
@@ -284,7 +294,8 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;gameResult={type:'win',winnerColor:mover,text:'Fim de jogo: '+(mover==='white'?'jogador claro':'jogador escuro')+' venceu porque o adversário ficou sem jogadas.'};say(gameResult.text);}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
- if(onlineRoomId)syncRoomState();
+ const completedPath=onlineMovePath.slice();onlineMovePath=[];
+ if(onlineRoomId)syncRoomState(mover,completedPath);
 }
 async function ensureOnlineAuth(){
  const {data,error}=await db.auth.getSession();
@@ -303,7 +314,7 @@ function applyRoomRow(row){
  B=clone(state.B);turn=state.turn||row.current_turn||'white';
  gameOver=!!state.gameOver||row.status==='finished';gameResult=state.gameResult||null;
  pgActive=!!state.pgActive;pgHunter=state.pgHunter||null;pgTarget=state.pgTarget||null;pgMoves=Number(state.pgMoves||0);
- selected=null;chainOptions=null;chainCaptured=[];history=[];legal=allLegal(B,turn);
+ selected=null;chainOptions=null;chainCaptured=[];onlineMovePath=[];history=[];legal=allLegal(B,turn);
  render();syncPGDisplay();
  if(gameOver)say(gameResult?.text||'A partida online terminou. O resultado não está disponível nesta versão da sala.');
  else say('Estado sincronizado. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
@@ -322,7 +333,7 @@ function watchRoom(roomId){
   });
 }
 function resetBoardForNewRoom(){
- B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
+ B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];onlineMovePath=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
 }
 function releaseFinishedRoom(){
  if(roomChannel){db.removeChannel(roomChannel);roomChannel=null;}
@@ -335,12 +346,10 @@ async function createOnlineRoom(){
   if(onlineRoomId&&onlineRoomStatus==='finished')releaseFinishedRoom();
   resetBoardForNewRoom();
   await ensureOnlineAuth();
-  const {data,error}=await db.rpc('create_game_room');if(error)throw error;
+  const {data,error}=await db.rpc('create_game_room_with_board',{p_board:packGameState()});if(error)throw error;
   const created=Array.isArray(data)?data[0]:data;
   if(!created?.room_id||!created?.room_code)throw new Error('A função não devolveu o código e o identificador da sala.');
   onlineRoomId=created.room_id;onlineCode=created.room_code;myColor='white';flipped=false;onlineRoomStatus='waiting';saveRoomSession();
-  const {error:updateError}=await db.from('rooms').update({board:packGameState(),current_turn:turn,status:'waiting',updated_at:new Date().toISOString()}).eq('id',onlineRoomId);
-  if(updateError)throw updateError;
   watchRoom(onlineRoomId);
   roomMessage('Sala criada! Código: '+onlineCode+'. Envia este código ao outro jogador. Tu jogas com as claras.');
   say('Sala online criada. Aguarda o adversário.');
@@ -363,12 +372,23 @@ async function joinOnlineRoom(){
  }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
  finally{btn.disabled=false}
 }
-async function syncRoomState(){
+async function syncRoomState(expectedTurn,movePath){
  if(!onlineRoomId||!onlineUser)return;
- const payload={board:packGameState(),current_turn:turn,status:gameOver?'finished':'playing',winner_id:gameOver&&gameResult?.type==='win'&&gameResult.winnerColor===myColor?onlineUser.id:null,updated_at:new Date().toISOString()};
- const {error}=await db.from('rooms').update(payload).eq('id',onlineRoomId);
- if(error)roomMessage('A jogada foi feita neste aparelho, mas a sincronização falhou: '+error.message);
- else onlineRoomStatus=payload.status;
+ try{
+  const {data,error}=await db.functions.invoke('validate-and-sync-move',{body:{
+   room_id:onlineRoomId,board:packGameState(),expected_turn:expectedTurn,move_path:movePath
+  }});
+  if(error)throw error;
+  if(!data?.success)throw new Error(data?.error||'O servidor não confirmou a jogada.');
+  onlineRoomStatus=data.status||(gameOver?'finished':'playing');
+ }catch(error){
+  // Restore the authoritative server state after a rejected or stale move.
+  try{
+   const {data:row}=await db.from('rooms').select('*').eq('id',onlineRoomId).single();
+   if(row){onlineRoomStatus=row.status;applyRoomRow(row);}
+  }catch(recoveryError){console.warn('Não foi possível recuperar o estado do servidor:',recoveryError);}
+  roomMessage('A jogada não foi confirmada pelo servidor. O estado mais recente foi recuperado quando possível. '+(error.message||error));
+ }
 }
 
 async function resignOnlineGame(){
@@ -403,7 +423,7 @@ async function restoreOnlineSession(){
   onlineRoomId=saved.roomId;onlineCode=saved.code||'';myColor=row.host_id===onlineUser.id?'white':'black';flipped=myColor==='black';onlineRoomStatus=row.status;
   applyRoomRow(row);watchRoom(onlineRoomId);
   roomMessage('Sessão recuperada · Sala '+(onlineCode||'')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
-  say('Partida online recuperada. Estado mais recente carregado.');
+  if(!gameOver)say('Partida online recuperada. Estado mais recente carregado.');
  }catch(e){roomMessage('Não foi possível recuperar a sessão online: '+(e.message||e))}
 }
 function newGame(){
