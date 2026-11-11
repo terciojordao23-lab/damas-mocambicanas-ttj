@@ -38,7 +38,7 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <script>
 const N=8, boardEl=document.getElementById('board'), statusEl=document.getElementById('status');
 let B=[],turn='white',selected=null,legal=[],history=[],flipped=false,gameOver=false,chainFrom=null,chainMoves=[],chainOptions=null,chainCaptured=[],pgActive=false,pgHunter=null,pgTarget=null,pgMoves=0;
-let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null;
+let onlineRoomId=null,onlineCode=null,myColor=null,onlineUser=null,roomChannel=null,onlineRoomStatus=null,gameResult=null,onlineMovePath=[];
 const ROOM_SESSION_KEY='damasTTJ_onlineRoom_v1';
 function saveRoomSession(){try{if(onlineRoomId&&myColor)localStorage.setItem(ROOM_SESSION_KEY,JSON.stringify({roomId:onlineRoomId,code:onlineCode,color:myColor}));}catch(e){console.warn('Não foi possível guardar a sessão online.',e)}}
 function clearRoomSession(){try{localStorage.removeItem(ROOM_SESSION_KEY)}catch(e){}}
@@ -228,10 +228,11 @@ function tap(r,c){
    const mover=turn;
    // Save one undo snapshot at the beginning of the whole turn, not for every jump.
    if(!chainOptions)history.push({B:clone(B),turn,gameOver,pgActive,pgHunter,pgTarget,pgMoves});
-   if(!chainOptions)chainCaptured=[];
+   if(!chainOptions){chainCaptured=[];onlineMovePath=[];}
    const step=opts[0].moves[0];
    const [sr,sc]=selected;
    const moving=B[sr][sc];
+   onlineMovePath.push({from:[sr,sc],to:step.to.slice(),cap:step.cap?step.cap.slice():null,promoteAfter:!!step.promoteAfter});
    B[sr][sc]=null;
    if(step.cap)chainCaptured.push(step.cap.slice());
    B[step.to[0]][step.to[1]]=moving;
@@ -284,7 +285,8 @@ function finishTurn(mover){
  if(!gameOver&&!legal.length){gameOver=true;gameResult={type:'win',winnerColor:mover,text:'Fim de jogo: '+(mover==='white'?'jogador claro':'jogador escuro')+' venceu porque o adversário ficou sem jogadas.'};say(gameResult.text);}
  else if(!gameOver)say((mover==='white'?'Jogador claro':'Jogador escuro')+' concluiu a jogada. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
  render();syncPGDisplay();
- if(onlineRoomId)syncRoomState(mover);
+ const completedPath=onlineMovePath.slice();onlineMovePath=[];
+ if(onlineRoomId)syncRoomState(mover,completedPath);
 }
 async function ensureOnlineAuth(){
  const {data,error}=await db.auth.getSession();
@@ -303,7 +305,7 @@ function applyRoomRow(row){
  B=clone(state.B);turn=state.turn||row.current_turn||'white';
  gameOver=!!state.gameOver||row.status==='finished';gameResult=state.gameResult||null;
  pgActive=!!state.pgActive;pgHunter=state.pgHunter||null;pgTarget=state.pgTarget||null;pgMoves=Number(state.pgMoves||0);
- selected=null;chainOptions=null;chainCaptured=[];history=[];legal=allLegal(B,turn);
+ selected=null;chainOptions=null;chainCaptured=[];onlineMovePath=[];history=[];legal=allLegal(B,turn);
  render();syncPGDisplay();
  if(gameOver)say(gameResult?.text||'A partida online terminou. O resultado não está disponível nesta versão da sala.');
  else say('Estado sincronizado. Vez do '+(turn==='white'?'jogador claro.':'jogador escuro.'));
@@ -322,7 +324,7 @@ function watchRoom(roomId){
   });
 }
 function resetBoardForNewRoom(){
- B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
+ B=init();turn='white';selected=null;chainOptions=null;chainCaptured=[];onlineMovePath=[];history=[];gameOver=false;gameResult=null;pgActive=false;pgHunter=null;pgTarget=null;pgMoves=0;legal=allLegal(B,turn);render();syncPGDisplay();
 }
 function releaseFinishedRoom(){
  if(roomChannel){db.removeChannel(roomChannel);roomChannel=null;}
@@ -361,10 +363,10 @@ async function joinOnlineRoom(){
  }catch(e){roomMessage('Não foi possível entrar na sala: '+(e.message||e))}
  finally{btn.disabled=false}
 }
-async function syncRoomState(expectedTurn){
+async function syncRoomState(expectedTurn,movePath){
  if(!onlineRoomId||!onlineUser)return;
  try{
-  const {data,error}=await db.rpc('sync_game_room',{p_room_id:onlineRoomId,p_board:packGameState(),p_expected_turn:expectedTurn});
+  const {data,error}=await db.rpc('sync_game_room',{p_room_id:onlineRoomId,p_board:packGameState(),p_expected_turn:expectedTurn,p_move_path:movePath});
   if(error)throw error;
   onlineRoomStatus=data?.status|| (gameOver?'finished':'playing');
  }catch(error){
