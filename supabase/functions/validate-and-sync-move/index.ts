@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     const wasPG=pgActive;
     if(pgActive&&expected===pgHunter) {
       pgMoves++;
-      const remaining=nextBoard.flat().filter(p=>p&&p.color===pgTarget).length;
+      const remaining=nextBoard.flat().filter((p:any)=>p&&p.color===pgTarget).length;
       if(remaining===0) {gameOver=true;gameResult={type:"win",winnerColor:pgHunter,text:"Fim de jogo: o caçador venceu no Pé de Galinha."};}
       else if(pgMoves>=12) {gameOver=true;gameResult={type:"draw",winnerColor:null,text:"Empate: a dama sobreviveu às 12 jogadas do caçador no Pé de Galinha."};}
     }
