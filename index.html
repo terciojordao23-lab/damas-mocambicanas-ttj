@@ -403,7 +403,7 @@ async function restoreOnlineSession(){
   onlineRoomId=saved.roomId;onlineCode=saved.code||'';myColor=row.host_id===onlineUser.id?'white':'black';flipped=myColor==='black';onlineRoomStatus=row.status;
   applyRoomRow(row);watchRoom(onlineRoomId);
   roomMessage('Sessão recuperada · Sala '+(onlineCode||'')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
-  say('Partida online recuperada. Estado mais recente carregado.');
+  if(!gameOver)say('Partida online recuperada. Estado mais recente carregado.');
  }catch(e){roomMessage('Não foi possível recuperar a sessão online: '+(e.message||e))}
 }
 function newGame(){
