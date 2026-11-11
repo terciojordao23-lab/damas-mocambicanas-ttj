@@ -1,0 +1,26 @@
+name: Validate Damas TTJ Edge Function
+
+on:
+  push:
+    branches:
+      - fix/secure-room-sync-rpc
+    paths:
+      - "supabase/functions/validate-and-sync-move/**"
+      - ".github/workflows/validate-edge-function.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deno-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Edge Function
+        run: deno check supabase/functions/validate-and-sync-move/index.ts
