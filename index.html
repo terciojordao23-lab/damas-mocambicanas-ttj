@@ -544,7 +544,7 @@ async function refreshPlayerAccount(){
    ?'A jogar como convidado · sem conta permanente.'
    :'Conta registada · '+(user.email||'identidade confirmada');
   const nameInput=document.getElementById('playerDisplayName');
-  if(profile?.display_name&&!nameInput.value)nameInput.value=profile.display_name;
+  if(profile?.display_name)nameInput.value=profile.display_name;
   document.getElementById('registerAccountBtn').hidden=!guest;
   document.getElementById('loginAccountBtn').hidden=!guest;
   document.getElementById('savePlayerNameBtn').hidden=guest;
