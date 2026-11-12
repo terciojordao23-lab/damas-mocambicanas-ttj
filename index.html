@@ -24,7 +24,29 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 14 · peças capturadas permanecem até ao fim da sequência</p></header>
 <section class="layout">
 <div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
-<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div><div id="opponentPresence" class="room-note" aria-live="polite"></div></section><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
+<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div><div id="opponentPresence" class="room-note" aria-live="polite"></div></section>
+<section class="room-box" id="playerAccountBox">
+<b>Jogador</b>
+<div id="accountState" class="room-note">A preparar a sessão de jogador…</div>
+<input id="playerDisplayName" maxlength="24" placeholder="Nome de exibição (2–24 caracteres)" autocomplete="nickname">
+<input id="playerEmail" type="email" placeholder="E-mail" autocomplete="email">
+<input id="playerPassword" type="password" placeholder="Palavra-passe (mínimo 8 caracteres)" autocomplete="current-password">
+<div class="room-actions">
+<button id="registerAccountBtn" onclick="registerPlayerAccount()">Criar conta</button>
+<button class="secondary" id="loginAccountBtn" onclick="loginPlayerAccount()">Entrar</button>
+</div>
+<div class="room-actions">
+<button class="secondary" id="setPasswordBtn" onclick="setPlayerPassword()" hidden>Definir palavra-passe</button>
+<button class="secondary" id="savePlayerNameBtn" onclick="savePlayerDisplayName()" hidden>Guardar nome</button>
+</div>
+<div id="accountMessage" class="room-note" aria-live="polite">Podes jogar como convidado. A conta permite conservar o teu perfil e entrar noutro dispositivo.</div>
+</section>
+<section class="room-box" id="leaderboardBox">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>Classificação geral</b><button class="secondary" onclick="loadPlayerLeaderboard()">Actualizar</button></div>
+<div id="leaderboardList" class="room-note">A carregar classificação…</div>
+<div class="room-note">Pontuação: vitória 3 pontos · empate 1 ponto. Só partidas entre contas registadas contam para o ranking.</div>
+</section>
+<div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
 <div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
 <label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
 <select id="scenario" onchange="loadScenario(this.value)" style="width:100%;padding:10px;border-radius:9px;background:#11151c;color:var(--text);border:1px solid #454b58">
@@ -499,6 +521,117 @@ function newGame(){
 }
 function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
+
+function accountMessage(message){const el=document.getElementById('accountMessage');if(el)el.textContent=message;}
+function accountValue(id){return (document.getElementById(id)?.value||'').trim();}
+async function refreshPlayerAccount(){
+ try{
+  const {data:{user},error}=await db.auth.getUser();
+  if(error)throw error;
+  if(!user){document.getElementById('accountState').textContent='Sessão ainda não iniciada.';return;}
+  onlineUser=user;
+  const guest=user.is_anonymous===true;
+  const {data:profile,error:profileError}=await db.from('player_profiles').select('display_name').eq('id',user.id).maybeSingle();
+  if(profileError)throw profileError;
+  document.getElementById('accountState').textContent=guest
+   ?'A jogar como convidado · sem conta permanente.'
+   :'Conta registada · '+(user.email||'identidade confirmada');
+  const nameInput=document.getElementById('playerDisplayName');
+  if(profile?.display_name&&!nameInput.value)nameInput.value=profile.display_name;
+  document.getElementById('registerAccountBtn').hidden=!guest;
+  document.getElementById('loginAccountBtn').hidden=!guest;
+  document.getElementById('savePlayerNameBtn').hidden=guest;
+  document.getElementById('setPasswordBtn').hidden=guest||!(user.email_confirmed_at||user.confirmed_at);
+  document.getElementById('playerEmail').value=user.email||document.getElementById('playerEmail').value;
+  document.getElementById('playerEmail').disabled=!guest;
+ }catch(error){accountMessage('Não foi possível carregar o perfil: '+(error.message||error));}
+}
+async function registerPlayerAccount(){
+ const btn=document.getElementById('registerAccountBtn');btn.disabled=true;
+ try{
+  await ensureOnlineAuth();
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user?.is_anonymous){throw new Error('Esta sessão já está associada a uma conta registada.');}
+  const displayName=accountValue('playerDisplayName'),email=accountValue('playerEmail');
+  if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
+  const {error}=await db.auth.updateUser({email,data:{display_name:displayName}},{emailRedirectTo:window.location.href});
+  if(error)throw error;
+  accountMessage('Pedido enviado. Confirma o e-mail através da mensagem recebida. Depois regressa a esta página e define a tua palavra-passe. A tua identidade de jogador e o histórico ficam associados à mesma conta.');
+  await refreshPlayerAccount();
+ }catch(error){
+  const message=error.message||String(error);
+  accountMessage(message.toLowerCase().includes('link')||message.toLowerCase().includes('identity')
+   ?'A ligação de identidade ainda não está activada no Supabase. É necessário activar Manual Linking nas definições de Authentication antes de criar contas a partir de convidados. Detalhe: '+message
+   :'Não foi possível iniciar o registo: '+message);
+ }finally{btn.disabled=false;}
+}
+async function setPlayerPassword(){
+ const btn=document.getElementById('setPasswordBtn');btn.disabled=true;
+ try{
+  const password=accountValue('playerPassword');
+  if(password.length<8)throw new Error('A palavra-passe deve ter pelo menos 8 caracteres.');
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user||user.is_anonymous||!(user.email_confirmed_at||user.confirmed_at))throw new Error('Primeiro confirma o e-mail através da mensagem que recebeste.');
+  const {error}=await db.auth.updateUser({password});if(error)throw error;
+  await savePlayerDisplayName(true);
+  document.getElementById('playerPassword').value='';
+  accountMessage('Conta protegida com palavra-passe. Podes usar o mesmo e-mail e palavra-passe noutro dispositivo.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();
+ }catch(error){accountMessage('Não foi possível definir a palavra-passe: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function savePlayerDisplayName(silent=false){
+ try{
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user||user.is_anonymous)throw new Error('Para guardar um nome permanente, primeiro regista a conta e confirma o e-mail.');
+  const displayName=accountValue('playerDisplayName');
+  if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
+  const {error}=await db.from('player_profiles').update({display_name:displayName}).eq('id',user.id);
+  if(error)throw error;
+  if(!silent)accountMessage('Nome de jogador actualizado.');
+  await loadPlayerLeaderboard();
+ }catch(error){if(!silent)accountMessage('Não foi possível guardar o nome: '+(error.message||error));throw error;}
+}
+async function loginPlayerAccount(){
+ const btn=document.getElementById('loginAccountBtn');btn.disabled=true;
+ try{
+  if(onlineRoomId&&onlineRoomStatus!=='finished')throw new Error('Termina a partida online actual antes de trocar de conta, para não perderes o acesso à sala.');
+  const email=accountValue('playerEmail'),password=accountValue('playerPassword');
+  if(!email||!password)throw new Error('Introduz o e-mail e a palavra-passe.');
+  const {data,error}=await db.auth.signInWithPassword({email,password});if(error)throw error;
+  onlineUser=data.user;
+  document.getElementById('playerPassword').value='';
+  accountMessage('Sessão iniciada. O teu perfil e a classificação foram carregados.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();
+ }catch(error){accountMessage('Não foi possível iniciar sessão: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function loadPlayerLeaderboard(){
+ const list=document.getElementById('leaderboardList');if(!list)return;
+ try{
+  const {data,error}=await db.rpc('get_player_leaderboard',{p_limit:20});if(error)throw error;
+  list.replaceChildren();
+  if(!data?.length){list.textContent='Ainda não há jogadores registados na classificação.';return;}
+  const ol=document.createElement('ol');ol.style.paddingLeft='22px';ol.style.margin='10px 0';
+  for(const player of data){
+   const li=document.createElement('li');li.style.margin='7px 0';
+   const line=document.createElement('span');
+   line.textContent=player.display_name+' — '+player.points+' pts · '+player.wins+' V / '+player.draws+' E / '+player.losses+' D';
+   li.appendChild(line);ol.appendChild(li);
+  }
+  list.appendChild(ol);
+ }catch(error){list.textContent='Classificação indisponível neste momento: '+(error.message||error);}
+}
+async function initializePlayerAccount(){
+ try{
+  await ensureOnlineAuth();
+  await refreshPlayerAccount();
+  await loadPlayerLeaderboard();
+  db.auth.onAuthStateChange((event)=>{if(['SIGNED_IN','USER_UPDATED','TOKEN_REFRESHED'].includes(event))setTimeout(()=>{refreshPlayerAccount();loadPlayerLeaderboard();},0);});
+ }catch(error){accountMessage('Não foi possível iniciar o perfil: '+(error.message||error));}
+}
+
 newGame();
-restoreOnlineSession();
+restoreOnlineSession().finally(initializePlayerAccount);
 </script></body></html>
