@@ -8,10 +8,16 @@ REVOKE ALL ON SCHEMA app_private FROM PUBLIC, anon, authenticated;
 CREATE TABLE IF NOT EXISTS public.player_profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   display_name text NOT NULL CHECK (char_length(btrim(display_name)) BETWEEN 2 AND 24),
+  points integer NOT NULL DEFAULT 500,
   is_guest boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.player_profiles ADD COLUMN IF NOT EXISTS points integer NOT NULL DEFAULT 500;
+
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS host_points_at_start integer;
+ALTER TABLE public.rooms ADD COLUMN IF NOT EXISTS guest_points_at_start integer;
 
 ALTER TABLE public.player_profiles ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.player_profiles FROM PUBLIC, anon, authenticated;
@@ -119,6 +125,32 @@ CREATE INDEX IF NOT EXISTS player_match_results_host_finished_idx
 CREATE INDEX IF NOT EXISTS player_match_results_guest_finished_idx
   ON public.player_match_results (guest_id, finished_at DESC);
 
+CREATE OR REPLACE FUNCTION app_private.snapshot_room_ratings()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+BEGIN
+  IF OLD.status = 'waiting' AND NEW.status = 'playing' THEN
+    SELECT COALESCE(points, 0) INTO NEW.host_points_at_start
+    FROM public.player_profiles WHERE id = NEW.host_id;
+    SELECT COALESCE(points, 0) INTO NEW.guest_points_at_start
+    FROM public.player_profiles WHERE id = NEW.guest_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+DROP TRIGGER IF EXISTS on_room_start_snapshot_ratings ON public.rooms;
+CREATE TRIGGER on_room_start_snapshot_ratings
+BEFORE UPDATE OF status ON public.rooms
+FOR EACH ROW
+WHEN (OLD.status = 'waiting' AND NEW.status = 'playing')
+EXECUTE FUNCTION app_private.snapshot_room_ratings();
+
+REVOKE ALL ON FUNCTION app_private.snapshot_room_ratings() FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION app_private.record_finished_room_result()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -129,6 +161,10 @@ DECLARE
   v_game_result jsonb;
   v_kind text;
   v_result_type text;
+  v_host_profile public.player_profiles%ROWTYPE;
+  v_guest_profile public.player_profiles%ROWTYPE;
+  v_host_opponent_points integer;
+  v_guest_opponent_points integer;
 BEGIN
   IF OLD.status = 'finished' OR NEW.status <> 'finished' OR NEW.guest_id IS NULL THEN
     RETURN NEW;
@@ -143,6 +179,37 @@ BEGIN
     v_result_type := 'draw';
   ELSE
     RETURN NEW;
+  END IF;
+
+  SELECT * INTO v_host_profile FROM public.player_profiles WHERE id = NEW.host_id;
+  SELECT * INTO v_guest_profile FROM public.player_profiles WHERE id = NEW.guest_id;
+
+  -- Competitive points are awarded only when both participants have permanent accounts.
+  -- Ratings are snapshotted when the second player joins, before the match begins.
+  IF FOUND AND v_host_profile.id IS NOT NULL AND v_guest_profile.id IS NOT NULL
+     AND v_host_profile.is_guest = false AND v_guest_profile.is_guest = false THEN
+    v_host_opponent_points := COALESCE(NEW.guest_points_at_start, 0);
+    v_guest_opponent_points := COALESCE(NEW.host_points_at_start, 0);
+
+    IF v_result_type = 'draw' THEN
+      UPDATE public.player_profiles
+      SET points = points + CASE
+        WHEN id = NEW.host_id THEN CASE WHEN v_host_opponent_points >= 500 THEN 5 ELSE -5 END
+        ELSE CASE WHEN v_guest_opponent_points >= 500 THEN 5 ELSE -5 END
+      END,
+      updated_at = now()
+      WHERE id IN (NEW.host_id, NEW.guest_id);
+    ELSE
+      UPDATE public.player_profiles
+      SET points = points + CASE
+        WHEN id = NEW.winner_id THEN
+          CASE WHEN (CASE WHEN id = NEW.host_id THEN v_host_opponent_points ELSE v_guest_opponent_points END) >= 500 THEN 25 ELSE 15 END
+        ELSE
+          CASE WHEN (CASE WHEN id = NEW.host_id THEN v_host_opponent_points ELSE v_guest_opponent_points END) >= 500 THEN -26 ELSE -24 END
+      END,
+      updated_at = now()
+      WHERE id IN (NEW.host_id, NEW.guest_id);
+    END IF;
   END IF;
 
   INSERT INTO public.player_match_results (
@@ -221,12 +288,12 @@ AS $function$
     COALESCE(t.losses, 0)::bigint,
     COALESCE(t.draws, 0)::bigint,
     (COALESCE(t.wins, 0) + COALESCE(t.losses, 0) + COALESCE(t.draws, 0))::bigint,
-    (COALESCE(t.wins, 0) * 3 + COALESCE(t.draws, 0))::bigint
+    p.points::bigint
   FROM public.player_profiles AS p
   LEFT JOIN totals AS t ON t.player_id = p.id
   WHERE p.is_guest = false
   ORDER BY
-    (COALESCE(t.wins, 0) * 3 + COALESCE(t.draws, 0)) DESC,
+    p.points DESC,
     COALESCE(t.wins, 0) DESC,
     (COALESCE(t.wins, 0) + COALESCE(t.losses, 0) + COALESCE(t.draws, 0)) DESC,
     p.display_name ASC
