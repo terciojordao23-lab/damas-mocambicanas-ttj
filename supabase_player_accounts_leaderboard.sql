@@ -233,3 +233,42 @@ GRANT EXECUTE ON FUNCTION public.get_player_leaderboard(integer) TO anon, authen
 
 REVOKE ALL ON FUNCTION app_private.sync_auth_user_profile() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION app_private.record_finished_room_result() FROM PUBLIC, anon, authenticated;
+
+
+CREATE OR REPLACE FUNCTION public.get_my_match_history(p_limit integer DEFAULT 20)
+RETURNS TABLE (
+  room_id uuid,
+  opponent_name text,
+  outcome text,
+  end_reason text,
+  finished_at timestamptz
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+  SELECT
+    r.room_id,
+    opponent.display_name,
+    CASE
+      WHEN r.result_type = 'draw' THEN 'Empate'
+      WHEN r.winner_id = (SELECT auth.uid()) THEN 'Vitória'
+      ELSE 'Derrota'
+    END,
+    r.end_reason,
+    r.finished_at
+  FROM public.player_match_results AS r
+  JOIN public.player_profiles AS opponent
+    ON opponent.id = CASE
+      WHEN r.host_id = (SELECT auth.uid()) THEN r.guest_id
+      ELSE r.host_id
+    END
+  WHERE (SELECT auth.uid()) IS NOT NULL
+    AND (r.host_id = (SELECT auth.uid()) OR r.guest_id = (SELECT auth.uid()))
+  ORDER BY r.finished_at DESC
+  LIMIT GREATEST(1, LEAST(COALESCE(p_limit, 20), 100));
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_my_match_history(integer) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_my_match_history(integer) TO authenticated;
