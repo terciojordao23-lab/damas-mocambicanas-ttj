@@ -29,7 +29,8 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <b>Jogador</b>
 <div id="accountState" class="room-note">A preparar a sessão de jogador…</div>
 <input id="playerDisplayName" maxlength="24" placeholder="Nome de exibição (2–24 caracteres)" autocomplete="nickname">
-<input id="playerEmail" type="email" placeholder="E-mail" autocomplete="email">
+<input id="playerEmail" type="text" placeholder="E-mail ou telefone (+258…)" autocomplete="username">
+<input id="accountOtp" inputmode="numeric" maxlength="6" placeholder="Código SMS (6 dígitos)" autocomplete="one-time-code" hidden>
 <input id="playerPassword" type="password" placeholder="Palavra-passe (mínimo 8 caracteres)" autocomplete="current-password">
 <div class="room-actions">
 <button id="registerAccountBtn" onclick="registerPlayerAccount()">Criar conta</button>
@@ -37,6 +38,9 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 </div>
 <div class="room-actions">
 <button class="secondary" id="setPasswordBtn" onclick="setPlayerPassword()" hidden>Definir palavra-passe</button>
+<button class="secondary" id="verifyPhoneBtn" onclick="confirmPhoneRegistration()" hidden>Confirmar SMS e criar conta</button>
+<button class="secondary" id="recoverPasswordBtn" onclick="requestPasswordRecovery()">Recuperar palavra-passe por SMS</button>
+<button class="secondary" id="finishRecoveryBtn" onclick="completePasswordRecovery()" hidden>Confirmar código e nova palavra-passe</button>
 <button class="secondary" id="savePlayerNameBtn" onclick="savePlayerDisplayName()" hidden>Guardar nome</button>
 </div>
 <div id="accountMessage" class="room-note" aria-live="polite">Podes jogar como convidado. A conta permite conservar o teu perfil e entrar noutro dispositivo.</div>
@@ -554,9 +558,10 @@ async function refreshPlayerAccount(){
   document.getElementById('registerAccountBtn').hidden=!guest;
   document.getElementById('loginAccountBtn').hidden=!guest;
   document.getElementById('savePlayerNameBtn').hidden=guest;
-  document.getElementById('setPasswordBtn').hidden=guest||!(user.email_confirmed_at||user.confirmed_at);
-  document.getElementById('playerEmail').value=user.email||document.getElementById('playerEmail').value;
+  document.getElementById('setPasswordBtn').hidden=guest||!(user.email_confirmed_at||user.confirmed_at||user.phone_confirmed_at);
+  document.getElementById('playerEmail').value=user.email||user.phone||document.getElementById('playerEmail').value;
   document.getElementById('playerEmail').disabled=!guest;
+  document.getElementById('verifyPhoneBtn').hidden=true;
  }catch(error){accountMessage('Não foi possível carregar o perfil: '+(error.message||error));}
 }
 async function registerPlayerAccount(){
@@ -564,20 +569,75 @@ async function registerPlayerAccount(){
  try{
   await ensureOnlineAuth();
   const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
-  if(!user?.is_anonymous){throw new Error('Esta sessão já está associada a uma conta registada.');}
-  const displayName=accountValue('playerDisplayName'),email=accountValue('playerEmail');
+  if(!user?.is_anonymous)throw new Error('Esta sessão já está associada a uma conta registada.');
+  const displayName=accountValue('playerDisplayName'),identifier=accountValue('playerEmail').trim();
   if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
-  const {error}=await db.auth.updateUser({email,data:{display_name:displayName}},{emailRedirectTo:window.location.href});
-  if(error)throw error;
-  accountMessage('Pedido enviado. Confirma o e-mail através da mensagem recebida. Depois regressa a esta página e define a tua palavra-passe. A tua identidade de jogador e o histórico ficam associados à mesma conta.');
+  if(identifier.includes('@')){
+   if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(identifier))throw new Error('Introduz um endereço de e-mail válido.');
+   const {error}=await db.auth.updateUser({email:identifier,data:{display_name:displayName}},{emailRedirectTo:window.location.href});
+   if(error)throw error;
+   accountMessage('Pedido enviado. Confirma o e-mail recebido e regressa aqui para definir a palavra-passe. O perfil e o histórico permanecem ligados à mesma identidade.');
+  }else{
+   if(!/^\\+[1-9]\\d{7,14}$/.test(identifier))throw new Error('Para registar por telefone, usa o formato internacional, por exemplo +258841234567.');
+   const {error}=await db.auth.updateUser({phone:identifier,data:{display_name:displayName}});
+   if(error)throw error;
+   document.getElementById('accountOtp').hidden=false;
+   document.getElementById('verifyPhoneBtn').hidden=false;
+   document.getElementById('setPasswordBtn').hidden=true;
+   accountMessage('Enviámos um código SMS para confirmar que tens acesso a este número. Esta verificação associa o telefone à tua conta de convidado e preserva o histórico. Depois poderás definir a palavra-passe.');
+  }
   await refreshPlayerAccount();
  }catch(error){
   const message=error.message||String(error);
   accountMessage(message.toLowerCase().includes('link')||message.toLowerCase().includes('identity')
-   ?'A ligação de identidade ainda não está activada no Supabase. É necessário activar Manual Linking nas definições de Authentication antes de criar contas a partir de convidados. Detalhe: '+message
+   ?'A ligação de identidade ainda não está activada. Activa Manual Linking nas definições de Authentication do Supabase. Detalhe: '+message
    :'Não foi possível iniciar o registo: '+message);
  }finally{btn.disabled=false;}
+}
+async function confirmPhoneRegistration(){
+ const btn=document.getElementById('verifyPhoneBtn');btn.disabled=true;
+ try{
+  const phone=accountValue('playerEmail').trim(),token=accountValue('accountOtp'),password=accountValue('playerPassword');
+  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Confirma o número no formato internacional.');
+  if(!/^\\d{6}$/.test(token))throw new Error('Introduz o código SMS de 6 dígitos.');
+  if(password.length<8)throw new Error('Introduz uma palavra-passe com pelo menos 8 caracteres.');
+  const {error:verifyError}=await db.auth.verifyOtp({phone,token,type:'phone_change'});if(verifyError)throw verifyError;
+  const {error:passwordError}=await db.auth.updateUser({password});if(passwordError)throw passwordError;
+  document.getElementById('accountOtp').value='';
+  document.getElementById('playerPassword').value='';
+  btn.hidden=true;
+  accountMessage('Número confirmado e palavra-passe definida. A conta mantém o mesmo perfil e histórico do convidado.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();
+ }catch(error){accountMessage('Não foi possível confirmar o telefone: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function requestPasswordRecovery(){
+ const btn=document.getElementById('recoverPasswordBtn');btn.disabled=true;
+ try{
+  const phone=accountValue('playerEmail').trim();
+  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone da conta no formato internacional (+258…).');
+  const {error}=await db.auth.signInWithOtp({phone,options:{shouldCreateUser:false}});
+  if(error)throw error;
+  document.getElementById('accountOtp').hidden=false;
+  document.getElementById('finishRecoveryBtn').hidden=false;
+  accountMessage('Enviámos um código SMS para o telefone da conta. Introduz o código e a nova palavra-passe.');
+ }catch(error){accountMessage('Não foi possível enviar o SMS de recuperação: '+(error.message||error)+'. Confirma se o fornecedor SMS está configurado no Supabase.');}
+ finally{btn.disabled=false;}
+}
+async function completePasswordRecovery(){
+ const btn=document.getElementById('finishRecoveryBtn');btn.disabled=true;
+ try{
+  const phone=accountValue('playerEmail').trim(),token=accountValue('accountOtp'),password=accountValue('playerPassword');
+  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone da conta no formato internacional.');
+  if(!/^\\d{6}$/.test(token))throw new Error('Introduz o código SMS de 6 dígitos.');
+  if(password.length<8)throw new Error('A nova palavra-passe deve ter pelo menos 8 caracteres.');
+  const {error:verifyError}=await db.auth.verifyOtp({phone,token,type:'sms'});if(verifyError)throw verifyError;
+  const {error:passwordError}=await db.auth.updateUser({password});if(passwordError)throw passwordError;
+  document.getElementById('accountOtp').value='';document.getElementById('playerPassword').value='';
+  btn.hidden=true;accountMessage('Palavra-passe actualizada com sucesso. A sessão foi iniciada.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();await loadPlayerMatchHistory();
+ }catch(error){accountMessage('Não foi possível recuperar a palavra-passe: '+(error.message||error));}
+ finally{btn.disabled=false;}
 }
 async function setPlayerPassword(){
  const btn=document.getElementById('setPasswordBtn');btn.disabled=true;
@@ -610,9 +670,10 @@ async function loginPlayerAccount(){
  const btn=document.getElementById('loginAccountBtn');btn.disabled=true;
  try{
   if(onlineRoomId&&onlineRoomStatus!=='finished')throw new Error('Termina a partida online actual antes de trocar de conta, para não perderes o acesso à sala.');
-  const email=accountValue('playerEmail'),password=accountValue('playerPassword');
-  if(!email||!password)throw new Error('Introduz o e-mail e a palavra-passe.');
-  const {data,error}=await db.auth.signInWithPassword({email,password});if(error)throw error;
+  const identifier=accountValue('playerEmail').trim(),password=accountValue('playerPassword');
+  if(!identifier||!password)throw new Error('Introduz o e-mail ou telefone e a palavra-passe.');
+  const credentials=identifier.includes('@')?{email:identifier,password}:{phone:identifier,password};
+  const {data,error}=await db.auth.signInWithPassword(credentials);if(error)throw error;
   onlineUser=data.user;
   document.getElementById('playerPassword').value='';
   accountMessage('Sessão iniciada. O teu perfil e a classificação foram carregados.');
