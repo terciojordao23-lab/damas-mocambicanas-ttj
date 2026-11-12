@@ -323,14 +323,20 @@ function finishTurn(mover){
  const completedPath=onlineMovePath.slice();onlineMovePath=[];
  if(onlineRoomId)syncRoomState(mover,completedPath);
 }
+let onlineAuthPromise=null;
 async function ensureOnlineAuth(){
- const {data,error}=await db.auth.getSession();
- if(error)throw error;
- if(data.session){onlineUser=data.session.user;return onlineUser}
- const signed=await db.auth.signInAnonymously();
- if(signed.error)throw signed.error;
- onlineUser=signed.data.user;
- return onlineUser;
+ if(onlineAuthPromise)return onlineAuthPromise;
+ onlineAuthPromise=(async()=>{
+  const {data,error}=await db.auth.getSession();
+  if(error)throw error;
+  if(data.session){onlineUser=data.session.user;return onlineUser}
+  const signed=await db.auth.signInAnonymously();
+  if(signed.error)throw signed.error;
+  onlineUser=signed.data.user;
+  return onlineUser;
+ })();
+ try{return await onlineAuthPromise;}
+ finally{onlineAuthPromise=null;}
 }
 function roomMessage(message){document.getElementById('roomInfo').textContent=message}
 function presenceMessage(message){
