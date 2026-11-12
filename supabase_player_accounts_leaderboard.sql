@@ -114,6 +114,11 @@ CREATE TABLE IF NOT EXISTS public.player_match_results (
 ALTER TABLE public.player_match_results ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.player_match_results FROM PUBLIC, anon, authenticated;
 
+CREATE INDEX IF NOT EXISTS player_match_results_host_finished_idx
+  ON public.player_match_results (host_id, finished_at DESC);
+CREATE INDEX IF NOT EXISTS player_match_results_guest_finished_idx
+  ON public.player_match_results (guest_id, finished_at DESC);
+
 CREATE OR REPLACE FUNCTION app_private.record_finished_room_result()
 RETURNS trigger
 LANGUAGE plpgsql
