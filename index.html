@@ -46,6 +46,10 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <div id="leaderboardList" class="room-note">A carregar classificação…</div>
 <div class="room-note">Pontuação: vitória 3 pontos · empate 1 ponto. Só partidas entre contas registadas contam para o ranking.</div>
 </section>
+<section class="room-box" id="matchHistoryBox">
+<b>Histórico recente</b>
+<div id="matchHistoryList" class="room-note">A carregar histórico…</div>
+</section>
 <div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
 <div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
 <label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
@@ -410,6 +414,7 @@ function watchRoom(roomId){
    if(row.board)applyRoomRow(row);
    roomMessage('Sala '+(onlineCode||'')+' · '+(row.status==='waiting'?'À espera do segundo jogador':row.status==='finished'?'Partida terminada':'Partida em curso')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
    refreshOpponentPresence();
+   if(row.status==='finished'){loadPlayerLeaderboard();loadPlayerMatchHistory();}
   })
   .subscribe(state=>{
    if(state==='SUBSCRIBED')roomMessage('Ligação em tempo real activa. Sala '+(onlineCode||'')+'.');
@@ -468,6 +473,7 @@ async function syncRoomState(expectedTurn,movePath){
   if(error)throw error;
   if(!data?.success)throw new Error(data?.error||'O servidor não confirmou a jogada.');
   onlineRoomStatus=data.status||(gameOver?'finished':'playing');
+  if(onlineRoomStatus==='finished'){loadPlayerLeaderboard();loadPlayerMatchHistory();}
  }catch(error){
   // Restore the authoritative server state after a rejected or stale move.
   try{
@@ -492,6 +498,7 @@ async function resignOnlineGame(){
   onlineRoomStatus=row.status;
   applyRoomRow(row);
   roomMessage('Partida terminada por desistência. '+(gameResult?.text||'O resultado foi guardado.'));
+  loadPlayerLeaderboard();loadPlayerMatchHistory();
  }catch(e){
   say('Não foi possível registar a desistência: '+(e.message||e));
  }finally{
@@ -623,12 +630,31 @@ async function loadPlayerLeaderboard(){
   list.appendChild(ol);
  }catch(error){list.textContent='Classificação indisponível neste momento: '+(error.message||error);}
 }
+async function loadPlayerMatchHistory(){
+ const list=document.getElementById('matchHistoryList');if(!list)return;
+ try{
+  const {data,error}=await db.rpc('get_my_match_history',{p_limit:15});if(error)throw error;
+  list.replaceChildren();
+  if(!data?.length){list.textContent='Ainda não há partidas registadas. As partidas concluídas a partir desta versão aparecerão aqui.';return;}
+  const ol=document.createElement('ol');ol.style.paddingLeft='22px';ol.style.margin='10px 0';
+  for(const match of data){
+   const li=document.createElement('li');li.style.margin='7px 0';
+   const line=document.createElement('span');
+   const date=new Date(match.finished_at).toLocaleDateString('pt-MZ');
+   const reason=match.end_reason==='resignation'?' · desistência':match.end_reason==='draw'?' · empate':'';
+   line.textContent=match.outcome+' contra '+match.opponent_name+' · '+date+reason;
+   li.appendChild(line);ol.appendChild(li);
+  }
+  list.appendChild(ol);
+ }catch(error){list.textContent='Histórico indisponível neste momento: '+(error.message||error);}
+}
 async function initializePlayerAccount(){
  try{
   await ensureOnlineAuth();
   await refreshPlayerAccount();
   await loadPlayerLeaderboard();
-  db.auth.onAuthStateChange((event)=>{if(['SIGNED_IN','USER_UPDATED','TOKEN_REFRESHED'].includes(event))setTimeout(()=>{refreshPlayerAccount();loadPlayerLeaderboard();},0);});
+  await loadPlayerMatchHistory();
+  db.auth.onAuthStateChange((event)=>{if(['SIGNED_IN','USER_UPDATED','TOKEN_REFRESHED'].includes(event))setTimeout(()=>{refreshPlayerAccount();loadPlayerLeaderboard();loadPlayerMatchHistory();},0);});
  }catch(error){accountMessage('Não foi possível iniciar o perfil: '+(error.message||error));}
 }
 
