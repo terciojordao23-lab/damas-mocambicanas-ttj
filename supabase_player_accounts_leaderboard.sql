@@ -48,6 +48,9 @@ DECLARE
   v_name text;
 BEGIN
   v_name := NULLIF(btrim(NEW.raw_user_meta_data->>'display_name'), '');
+  IF v_name IS NOT NULL AND char_length(v_name) < 2 THEN
+    v_name := NULL;
+  END IF;
   IF v_name IS NULL THEN
     SELECT p.display_name INTO v_name
     FROM public.player_profiles AS p
@@ -83,10 +86,11 @@ EXECUTE FUNCTION app_private.sync_auth_user_profile();
 INSERT INTO public.player_profiles (id, display_name, is_guest)
 SELECT
   u.id,
-  COALESCE(
-    NULLIF(left(btrim(u.raw_user_meta_data->>'display_name'), 24), ''),
-    'Jogador-' || upper(substr(replace(u.id::text, '-', ''), 1, 6))
-  ),
+  CASE
+    WHEN char_length(btrim(COALESCE(u.raw_user_meta_data->>'display_name', ''))) BETWEEN 2 AND 24
+      THEN btrim(u.raw_user_meta_data->>'display_name')
+    ELSE 'Jogador-' || upper(substr(replace(u.id::text, '-', ''), 1, 6))
+  END,
   COALESCE(u.is_anonymous, true)
 FROM auth.users AS u
 ON CONFLICT (id) DO NOTHING;
