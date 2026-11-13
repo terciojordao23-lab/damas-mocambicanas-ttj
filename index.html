@@ -593,12 +593,12 @@ async function registerPlayerAccount(){
  }finally{btn.disabled=false;}
 }
 function normalizeRecoveryPhoneInput(value){
- let phone=String(value||'').trim().replace(/[()\\s-]/g,'');
+ let phone=String(value||'').trim().replace(/[()\s-]/g,'');
  if(phone.startsWith('00'))phone='+'+phone.slice(2);
  return phone;
 }
 async function saveRecoveryPhone(showMessage=true){
- const phone=accountValue('recoveryPhone');
+ const phone=normalizeRecoveryPhoneInput(accountValue('recoveryPhone'));document.getElementById('recoveryPhone').value=phone;
  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone no formato internacional (+258…).');
  const {data,error}=await db.functions.invoke('recovery-contact',{body:{action:'set',phone}});
  if(error)throw error;
@@ -614,7 +614,7 @@ async function saveRecoveryPhoneButton(){
 async function requestPasswordRecovery(){
  const btn=document.getElementById('recoverPasswordBtn');btn.disabled=true;
  try{
-  const phone=accountValue('recoveryPhone');
+  const phone=normalizeRecoveryPhoneInput(accountValue('recoveryPhone'));document.getElementById('recoveryPhone').value=phone;
   if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional (+258…).');
   const {data,error}=await db.functions.invoke('phone-password-recovery',{body:{action:'request',phone}});
   if(error)throw error;
