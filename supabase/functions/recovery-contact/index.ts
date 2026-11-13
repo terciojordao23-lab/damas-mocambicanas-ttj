@@ -43,7 +43,7 @@ Deno.serve(async (req: Request) => {
     if (action !== "set") return json({ error: "Acção inválida." }, 400);
 
     const phone = String(body?.phone || "").trim();
-    if (!/^\\+[1-9]\\d{7,14}$/.test(phone)) {
+    if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
       return json({ error: "Introduz o telefone no formato internacional, por exemplo +258841234567." }, 400);
     }
 
