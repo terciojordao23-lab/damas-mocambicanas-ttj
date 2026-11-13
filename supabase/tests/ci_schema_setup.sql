@@ -3,9 +3,19 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon NOLOGIN; END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role NOLOGIN BYPASSRLS; END IF;
 END $$;
 
 CREATE SCHEMA IF NOT EXISTS auth;
+CREATE TABLE IF NOT EXISTS auth.users (
+  id uuid PRIMARY KEY,
+  email text UNIQUE,
+  raw_user_meta_data jsonb NOT NULL DEFAULT '{}'::jsonb,
+  is_anonymous boolean DEFAULT true,
+  email_confirmed_at timestamptz,
+  confirmed_at timestamptz
+);
+
 CREATE OR REPLACE FUNCTION auth.uid()
 RETURNS uuid
 LANGUAGE sql
@@ -15,6 +25,14 @@ AS $$
 $$;
 
 -- Existing RPCs are stubbed so migration privilege changes are tested in CI.
+CREATE OR REPLACE FUNCTION auth.jwt()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+AS $authjwt$
+  SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
+$authjwt$;
+
 CREATE OR REPLACE FUNCTION public.create_game_room()
 RETURNS TABLE(room_id uuid, room_code text)
 LANGUAGE sql SECURITY DEFINER

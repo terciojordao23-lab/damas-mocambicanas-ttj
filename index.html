@@ -24,7 +24,38 @@ button{background:var(--gold);color:#17130c;border:0;padding:10px 12px;border-ra
 <header class="brand"><div>🇲🇿</div><h1>DAMAS MOÇAMBICANAS TTJ</h1><p>Protótipo 14 · peças capturadas permanecem até ao fim da sequência</p></header>
 <section class="layout">
 <div class="board-wrap"><div id="board" class="board"></div><div class="legend"><span>● Jogador claro</span><span>● Jogador escuro</span><span>♛ Dama</span><span>• Destino possível</span></div></div>
-<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div><div id="opponentPresence" class="room-note" aria-live="polite"></div></section><div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
+<aside class="panel"><h2>Partida</h2><section class="room-box"><b>Modo online</b><div class="room-actions" style="margin-top:8px"><button id="createRoomBtn" onclick="createOnlineRoom()">Criar sala</button></div><input id="roomCodeInput" maxlength="6" placeholder="Código da sala (6 caracteres)" autocomplete="off" autocapitalize="characters"><div class="room-actions"><button class="secondary" id="joinRoomBtn" onclick="joinOnlineRoom()">Entrar na sala</button></div><div id="roomInfo" class="room-note">Ainda não estás numa sala online. Podes continuar a jogar localmente.</div><div id="opponentPresence" class="room-note" aria-live="polite"></div></section>
+<section class="room-box" id="playerAccountBox">
+<b>Jogador</b>
+<div id="accountState" class="room-note">A preparar a sessão de jogador…</div>
+<input id="playerDisplayName" maxlength="24" placeholder="Nome de exibição (2–24 caracteres)" autocomplete="nickname">
+<input id="playerEmail" type="email" placeholder="E-mail da conta" autocomplete="username">
+<input id="recoveryPhone" type="tel" placeholder="Telefone de recuperação (+258…)" autocomplete="tel">
+<input id="accountOtp" inputmode="numeric" maxlength="10" placeholder="Código recebido por SMS" autocomplete="one-time-code" hidden>
+<input id="playerPassword" type="password" placeholder="Palavra-passe (mínimo 8 caracteres)" autocomplete="current-password">
+<div class="room-actions">
+<button id="registerAccountBtn" onclick="registerPlayerAccount()">Criar conta</button>
+<button class="secondary" id="loginAccountBtn" onclick="loginPlayerAccount()">Entrar</button>
+</div>
+<div class="room-actions">
+<button class="secondary" id="setPasswordBtn" onclick="setPlayerPassword()" hidden>Definir palavra-passe</button>
+<button class="secondary" id="saveRecoveryPhoneBtn" onclick="saveRecoveryPhoneButton()">Guardar telefone</button>
+<button class="secondary" id="recoverPasswordBtn" onclick="requestPasswordRecovery()">Recuperar palavra-passe por SMS</button>
+<button class="secondary" id="finishRecoveryBtn" onclick="completePasswordRecovery()" hidden>Confirmar código e nova palavra-passe</button>
+<button class="secondary" id="savePlayerNameBtn" onclick="savePlayerDisplayName()" hidden>Guardar nome</button>
+</div>
+<div id="accountMessage" class="room-note" aria-live="polite">Podes jogar como convidado. A conta permanente usa e-mail e palavra-passe; o telefone serve apenas para recuperar a palavra-passe.</div>
+</section>
+<section class="room-box" id="leaderboardBox">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b>Classificação geral</b><button class="secondary" onclick="loadPlayerLeaderboard()">Actualizar</button></div>
+<div id="leaderboardList" class="room-note">A carregar classificação…</div>
+<div class="room-note">Cada conta começa com 500 pontos. Contra adversário com 500 pontos ou mais: vitória +25, empate +5, derrota −26. Contra adversário com menos de 500: vitória +15, empate −5, derrota −24. Os pontos do adversário são registados no início da partida.</div>
+</section>
+<section class="room-box" id="matchHistoryBox">
+<b>Histórico recente</b>
+<div id="matchHistoryList" class="room-note">A carregar histórico…</div>
+</section>
+<div id="status" class="status">Vez do jogador claro. Toque numa peça e depois numa casa marcada.</div>
 <div class="info"><span id="turn">Vez: Claro</span><span id="counts">12 × 12</span></div>
 <label for="scenario" style="display:block;color:var(--muted);font-size:13px;margin:10px 0 5px">Posição de teste</label>
 <select id="scenario" onchange="loadScenario(this.value)" style="width:100%;padding:10px;border-radius:9px;background:#11151c;color:var(--text);border:1px solid #454b58">
@@ -297,14 +328,20 @@ function finishTurn(mover){
  const completedPath=onlineMovePath.slice();onlineMovePath=[];
  if(onlineRoomId)syncRoomState(mover,completedPath);
 }
+let onlineAuthPromise=null;
 async function ensureOnlineAuth(){
- const {data,error}=await db.auth.getSession();
- if(error)throw error;
- if(data.session){onlineUser=data.session.user;return onlineUser}
- const signed=await db.auth.signInAnonymously();
- if(signed.error)throw signed.error;
- onlineUser=signed.data.user;
- return onlineUser;
+ if(onlineAuthPromise)return onlineAuthPromise;
+ onlineAuthPromise=(async()=>{
+  const {data,error}=await db.auth.getSession();
+  if(error)throw error;
+  if(data.session){onlineUser=data.session.user;return onlineUser}
+  const signed=await db.auth.signInAnonymously();
+  if(signed.error)throw signed.error;
+  onlineUser=signed.data.user;
+  return onlineUser;
+ })();
+ try{return await onlineAuthPromise;}
+ finally{onlineAuthPromise=null;}
 }
 function roomMessage(message){document.getElementById('roomInfo').textContent=message}
 function presenceMessage(message){
@@ -388,6 +425,7 @@ function watchRoom(roomId){
    if(row.board)applyRoomRow(row);
    roomMessage('Sala '+(onlineCode||'')+' · '+(row.status==='waiting'?'À espera do segundo jogador':row.status==='finished'?'Partida terminada':'Partida em curso')+' · Tu jogas com '+(myColor==='white'?'as claras':'as escuras')+'.');
    refreshOpponentPresence();
+   if(row.status==='finished'){loadPlayerLeaderboard();loadPlayerMatchHistory();}
   })
   .subscribe(state=>{
    if(state==='SUBSCRIBED')roomMessage('Ligação em tempo real activa. Sala '+(onlineCode||'')+'.');
@@ -446,6 +484,7 @@ async function syncRoomState(expectedTurn,movePath){
   if(error)throw error;
   if(!data?.success)throw new Error(data?.error||'O servidor não confirmou a jogada.');
   onlineRoomStatus=data.status||(gameOver?'finished':'playing');
+  if(onlineRoomStatus==='finished'){loadPlayerLeaderboard();loadPlayerMatchHistory();}
  }catch(error){
   // Restore the authoritative server state after a rejected or stale move.
   try{
@@ -470,6 +509,7 @@ async function resignOnlineGame(){
   onlineRoomStatus=row.status;
   applyRoomRow(row);
   roomMessage('Partida terminada por desistência. '+(gameResult?.text||'O resultado foi guardado.'));
+  loadPlayerLeaderboard();loadPlayerMatchHistory();
  }catch(e){
   say('Não foi possível registar a desistência: '+(e.message||e));
  }finally{
@@ -499,6 +539,203 @@ function newGame(){
 }
 function undo(){if(onlineRoomId){say('Desfazer está disponível apenas nas partidas locais.');return}if(!history.length){say('Ainda não há jogada para desfazer.');return}const h=history.pop();B=h.B;turn=h.turn;gameOver=h.gameOver;selected=null;chainOptions=null;chainCaptured=[];pgActive=h.pgActive;pgHunter=h.pgHunter;pgTarget=h.pgTarget;pgMoves=h.pgMoves;selected=null;legal=allLegal(B,turn);render();syncPGDisplay();say('Última jogada desfeita.')}
 function flip(){flipped=!flipped;render();say('Perspectiva rodada. A posição e as regras não mudaram.')}
+
+function accountMessage(message){const el=document.getElementById('accountMessage');if(el)el.textContent=message;}
+function accountValue(id){return (document.getElementById(id)?.value||'').trim();}
+async function refreshPlayerAccount(){
+ try{
+  const {data:{user},error}=await db.auth.getUser();
+  if(error)throw error;
+  if(!user){document.getElementById('accountState').textContent='Sessão ainda não iniciada.';return;}
+  onlineUser=user;
+  const guest=user.is_anonymous===true;
+  const {data:profile,error:profileError}=await db.from('player_profiles').select('display_name').eq('id',user.id).maybeSingle();
+  if(profileError)throw profileError;
+  document.getElementById('accountState').textContent=guest
+   ?'A jogar como convidado · sem conta permanente.'
+   :'Conta registada · '+(user.email||'identidade confirmada');
+  const nameInput=document.getElementById('playerDisplayName');
+  if(profile?.display_name)nameInput.value=profile.display_name;
+  document.getElementById('registerAccountBtn').hidden=!guest;
+  document.getElementById('loginAccountBtn').hidden=!guest;
+  document.getElementById('savePlayerNameBtn').hidden=guest;
+  document.getElementById('setPasswordBtn').hidden=guest||!(user.email_confirmed_at||user.confirmed_at);
+  document.getElementById('saveRecoveryPhoneBtn').hidden=guest;
+  document.getElementById('playerEmail').value=user.email||document.getElementById('playerEmail').value;
+  document.getElementById('playerEmail').disabled=!guest;
+  const {data:contact,error:contactError}=await db.functions.invoke('recovery-contact',{body:{action:'get'}});
+  if(contactError)throw contactError;
+  document.getElementById('recoveryPhone').value=contact?.phone||'';
+ }catch(error){accountMessage('Não foi possível carregar o perfil: '+(error.message||error));}
+}
+async function registerPlayerAccount(){
+ const btn=document.getElementById('registerAccountBtn');btn.disabled=true;
+ try{
+  await ensureOnlineAuth();
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user?.is_anonymous)throw new Error('Esta sessão já está associada a uma conta registada.');
+  const displayName=accountValue('playerDisplayName');
+  const email=accountValue('playerEmail').toLowerCase();
+  const phone=accountValue('recoveryPhone');
+  if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional, por exemplo +258841234567.');
+  const {error}=await db.auth.updateUser({email,data:{display_name:displayName}},{emailRedirectTo:window.location.href});
+  if(error)throw error;
+  await saveRecoveryPhone(false);
+  accountMessage('Pedido de registo enviado. Confirma o e-mail recebido. O telefone ficou guardado para recuperação; não enviamos SMS durante o registo.');
+  await refreshPlayerAccount();
+ }catch(error){
+  const message=error.message||String(error);
+  accountMessage(message.toLowerCase().includes('link')||message.toLowerCase().includes('identity')
+   ?'A ligação de identidade ainda não está activada. Activa Manual Linking nas definições de Authentication do Supabase. Detalhe: '+message
+   :'Não foi possível iniciar o registo: '+message);
+ }finally{btn.disabled=false;}
+}
+async function saveRecoveryPhone(showMessage=true){
+ const phone=accountValue('recoveryPhone');
+ if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone no formato internacional (+258…).');
+ const {data,error}=await db.functions.invoke('recovery-contact',{body:{action:'set',phone}});
+ if(error)throw error;
+ if(data?.error)throw new Error(data.error);
+ document.getElementById('recoveryPhone').value=data?.phone||phone;
+ if(showMessage)accountMessage('Telefone de recuperação guardado. Não foi enviado SMS; a verificação só será feita quando recuperares a palavra-passe.');
+ return data?.phone||phone;
+}
+async function saveRecoveryPhoneButton(){
+ try{await saveRecoveryPhone(true);}
+ catch(error){accountMessage('Não foi possível guardar o telefone: '+(error.message||error));}
+}
+async function requestPasswordRecovery(){
+ const btn=document.getElementById('recoverPasswordBtn');btn.disabled=true;
+ try{
+  const phone=accountValue('recoveryPhone');
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional (+258…).');
+  const {data,error}=await db.functions.invoke('phone-password-recovery',{body:{action:'request',phone}});
+  if(error)throw error;
+  if(data?.error)throw new Error(data.error);
+  document.getElementById('accountOtp').hidden=false;
+  document.getElementById('finishRecoveryBtn').hidden=false;
+  document.getElementById('playerPassword').placeholder='Nova palavra-passe (mínimo 8 caracteres)';
+  accountMessage(data?.message||'Se o número estiver associado a uma conta confirmada, receberás um código SMS.');
+ }catch(error){accountMessage('Não foi possível iniciar a recuperação: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function completePasswordRecovery(){
+ const btn=document.getElementById('finishRecoveryBtn');btn.disabled=true;
+ try{
+  const phone=accountValue('recoveryPhone'),code=accountValue('accountOtp'),password=accountValue('playerPassword');
+  const email=accountValue('playerEmail').toLowerCase();
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional.');
+  if(!/^\d{4,10}$/.test(code))throw new Error('Introduz o código recebido por SMS.');
+  if(password.length<8)throw new Error('A nova palavra-passe deve ter pelo menos 8 caracteres.');
+  const {data,error}=await db.functions.invoke('phone-password-recovery',{
+   body:{action:'complete',phone,code,newPassword:password}
+  });
+  if(error)throw error;
+  if(data?.error)throw new Error(data.error);
+  document.getElementById('accountOtp').value='';
+  document.getElementById('finishRecoveryBtn').hidden=true;
+  document.getElementById('playerPassword').placeholder='Palavra-passe (mínimo 8 caracteres)';
+  if(email){
+   const {error:loginError}=await db.auth.signInWithPassword({email,password});
+   if(!loginError){
+    document.getElementById('playerPassword').value='';
+    accountMessage('Palavra-passe recuperada e sessão iniciada. O teu perfil e histórico foram mantidos.');
+    await refreshPlayerAccount();await loadPlayerLeaderboard();await loadPlayerMatchHistory();
+    return;
+   }
+  }
+  document.getElementById('playerPassword').value='';
+  accountMessage('Palavra-passe actualizada. Agora entra com o e-mail da conta e a nova palavra-passe.');
+ }catch(error){accountMessage('Não foi possível recuperar a palavra-passe: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function setPlayerPassword(){
+ const btn=document.getElementById('setPasswordBtn');btn.disabled=true;
+ try{
+  const password=accountValue('playerPassword');
+  if(password.length<8)throw new Error('A palavra-passe deve ter pelo menos 8 caracteres.');
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user||user.is_anonymous||!(user.email_confirmed_at||user.confirmed_at))throw new Error('Primeiro confirma o e-mail através da mensagem que recebeste.');
+  const {error}=await db.auth.updateUser({password});if(error)throw error;
+  await savePlayerDisplayName(true);
+  document.getElementById('playerPassword').value='';
+  accountMessage('Conta protegida com palavra-passe. Podes usar o mesmo e-mail e palavra-passe noutro dispositivo.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();
+ }catch(error){accountMessage('Não foi possível definir a palavra-passe: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function savePlayerDisplayName(silent=false){
+ try{
+  const {data:{user},error:userError}=await db.auth.getUser();if(userError)throw userError;
+  if(!user||user.is_anonymous)throw new Error('Para guardar um nome permanente, primeiro regista a conta e confirma o e-mail.');
+  const displayName=accountValue('playerDisplayName');
+  if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
+  const {error}=await db.from('player_profiles').update({display_name:displayName}).eq('id',user.id);
+  if(error)throw error;
+  if(!silent)accountMessage('Nome de jogador actualizado.');
+  await loadPlayerLeaderboard();
+ }catch(error){if(!silent)accountMessage('Não foi possível guardar o nome: '+(error.message||error));throw error;}
+}
+async function loginPlayerAccount(){
+ const btn=document.getElementById('loginAccountBtn');btn.disabled=true;
+ try{
+  if(onlineRoomId&&onlineRoomStatus!=='finished')throw new Error('Termina a partida online actual antes de trocar de conta, para não perderes o acesso à sala.');
+  const email=accountValue('playerEmail').toLowerCase(),password=accountValue('playerPassword');
+  if(!email||!password)throw new Error('Introduz o e-mail e a palavra-passe.');
+  const {data,error}=await db.auth.signInWithPassword({email,password});if(error)throw error;
+  onlineUser=data.user;
+  document.getElementById('playerPassword').value='';
+  accountMessage('Sessão iniciada. O teu perfil e a classificação foram carregados.');
+  await refreshPlayerAccount();await loadPlayerLeaderboard();
+ }catch(error){accountMessage('Não foi possível iniciar sessão: '+(error.message||error));}
+ finally{btn.disabled=false;}
+}
+async function loadPlayerLeaderboard(){
+ const list=document.getElementById('leaderboardList');if(!list)return;
+ try{
+  const {data,error}=await db.rpc('get_player_leaderboard',{p_limit:20});if(error)throw error;
+  list.replaceChildren();
+  if(!data?.length){list.textContent='Ainda não há jogadores registados na classificação.';return;}
+  const ol=document.createElement('ol');ol.style.paddingLeft='22px';ol.style.margin='10px 0';
+  for(const player of data){
+   const li=document.createElement('li');li.style.margin='7px 0';
+   const line=document.createElement('span');
+   line.textContent=player.display_name+' — '+player.points+' pts · '+player.wins+' V / '+player.draws+' E / '+player.losses+' D';
+   li.appendChild(line);ol.appendChild(li);
+  }
+  list.appendChild(ol);
+ }catch(error){list.textContent='Classificação indisponível neste momento: '+(error.message||error);}
+}
+async function loadPlayerMatchHistory(){
+ const list=document.getElementById('matchHistoryList');if(!list)return;
+ try{
+  const {data,error}=await db.rpc('get_my_match_history',{p_limit:15});if(error)throw error;
+  list.replaceChildren();
+  if(!data?.length){list.textContent='Ainda não há partidas registadas. As partidas concluídas a partir desta versão aparecerão aqui.';return;}
+  const ol=document.createElement('ol');ol.style.paddingLeft='22px';ol.style.margin='10px 0';
+  for(const match of data){
+   const li=document.createElement('li');li.style.margin='7px 0';
+   const line=document.createElement('span');
+   const date=new Date(match.finished_at).toLocaleDateString('pt-MZ');
+   const reason=match.end_reason==='resignation'?' · desistência':match.end_reason==='draw'?' · empate':'';
+   line.textContent=match.outcome+' contra '+match.opponent_name+' · '+date+reason;
+   li.appendChild(line);ol.appendChild(li);
+  }
+  list.appendChild(ol);
+ }catch(error){list.textContent='Histórico indisponível neste momento: '+(error.message||error);}
+}
+async function initializePlayerAccount(){
+ try{
+  await ensureOnlineAuth();
+  await refreshPlayerAccount();
+  await loadPlayerLeaderboard();
+  await loadPlayerMatchHistory();
+  db.auth.onAuthStateChange((event)=>{if(['SIGNED_IN','USER_UPDATED','TOKEN_REFRESHED'].includes(event))setTimeout(()=>{refreshPlayerAccount();loadPlayerLeaderboard();loadPlayerMatchHistory();},0);});
+ }catch(error){accountMessage('Não foi possível iniciar o perfil: '+(error.message||error));}
+}
+
 newGame();
-restoreOnlineSession();
+restoreOnlineSession().finally(initializePlayerAccount);
 </script></body></html>
