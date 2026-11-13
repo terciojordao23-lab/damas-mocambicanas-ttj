@@ -1,7 +1,7 @@
 project_id = "kbxcqmhytdrqxvzyxhkh"
 
 [functions.recovery-contact]
-verify_jwt = false
+verify_jwt = true
 
 [functions.phone-password-recovery]
 verify_jwt = false
