@@ -180,8 +180,10 @@ BEGIN
   -- The opponent ratings are snapshotted when the second player joins.
   IF v_host_profile.id IS NOT NULL AND v_guest_profile.id IS NOT NULL
      AND v_host_profile.is_guest = false AND v_guest_profile.is_guest = false THEN
-    v_host_opponent_points := COALESCE(NEW.guest_points_at_start, 0);
-    v_guest_opponent_points := COALESCE(NEW.host_points_at_start, 0);
+    -- For rooms that were already playing before this migration, no start snapshot exists.
+    -- Fall back to each player's current initial rating instead of incorrectly treating it as zero.
+    v_host_opponent_points := COALESCE(NEW.guest_points_at_start, v_guest_profile.points, 500);
+    v_guest_opponent_points := COALESCE(NEW.host_points_at_start, v_host_profile.points, 500);
 
     IF v_result_type = 'draw' THEN
       UPDATE public.player_profiles
