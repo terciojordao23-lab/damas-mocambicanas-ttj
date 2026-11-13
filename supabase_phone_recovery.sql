@@ -8,7 +8,7 @@ GRANT USAGE ON SCHEMA app_private TO service_role;
 CREATE TABLE IF NOT EXISTS public.player_recovery_contacts (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   phone_e164 text NOT NULL UNIQUE
-    CHECK (phone_e164 ~ '^\\+[1-9][0-9]{7,14}$'),
+    CHECK (phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
