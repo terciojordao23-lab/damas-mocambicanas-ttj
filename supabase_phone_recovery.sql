@@ -5,17 +5,17 @@ CREATE SCHEMA IF NOT EXISTS app_private;
 REVOKE ALL ON SCHEMA app_private FROM PUBLIC, anon, authenticated;
 GRANT USAGE ON SCHEMA app_private TO service_role;
 
-CREATE TABLE IF NOT EXISTS app_private.player_recovery_contacts (
+CREATE TABLE IF NOT EXISTS public.player_recovery_contacts (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   phone_e164 text NOT NULL UNIQUE
     CHECK (phone_e164 ~ '^\\+[1-9][0-9]{7,14}$'),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE app_private.player_recovery_contacts ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON TABLE app_private.player_recovery_contacts FROM PUBLIC, anon, authenticated;
+ALTER TABLE public.player_recovery_contacts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.player_recovery_contacts FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE
-  ON TABLE app_private.player_recovery_contacts TO service_role;
+  ON TABLE public.player_recovery_contacts TO service_role;
 
 CREATE TABLE IF NOT EXISTS app_private.phone_recovery_rate_limits (
   key_type text NOT NULL CHECK (key_type IN ('phone', 'ip')),
