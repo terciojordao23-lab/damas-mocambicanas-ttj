@@ -20,14 +20,14 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
 
   const { data: ctx, error: authError } = await createSupabaseContext(req, { auth: "user" });
-  if (authError || !ctx?.userClaims?.sub) {
+  if (authError || !ctx?.userClaims?.id) {
     return json({ error: "Inicia sessão para guardar o telefone de recuperação." }, 401);
   }
 
   try {
     const body = await req.json();
     const action = body?.action || "get";
-    const userId = ctx.userClaims.sub as string;
+    const userId = ctx.userClaims.id as string;
     const admin = ctx.supabaseAdmin;
 
     if (action === "get") {
