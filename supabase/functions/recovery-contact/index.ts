@@ -19,16 +19,25 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Método não permitido." }, 405);
 
-  const { data: ctx, error: authError } = await createSupabaseContext(req, { auth: "user" });
-  if (authError || !ctx?.userClaims?.id) {
-    return json({ error: "Inicia sessão para guardar o telefone de recuperação." }, 401);
+  const { data: ctx, error: contextError } = await createSupabaseContext(req, { auth: "none" });
+  if (contextError || !ctx?.supabaseAdmin) {
+    return json({ error: "Serviço temporariamente indisponível." }, 503);
   }
 
+  const authorization = req.headers.get("Authorization") || "";
+  const token = authorization.replace(/^Bearer\\s+/i, "");
+  if (!token) return json({ error: "Inicia sessão para guardar o telefone de recuperação." }, 401);
+
   try {
+    const admin = ctx.supabaseAdmin;
+    const { data: authData, error: authError } = await admin.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return json({ error: "A sessão expirou. Inicia sessão novamente." }, 401);
+    }
+    const user = authData.user;
+    const userId = user.id;
     const body = await req.json();
     const action = body?.action || "get";
-    const userId = ctx.userClaims.id as string;
-    const admin = ctx.supabaseAdmin;
 
     if (action === "get") {
       const { data, error } = await admin
@@ -47,9 +56,7 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Introduz o telefone no formato internacional, por exemplo +258841234567." }, 400);
     }
 
-    const { data: userData, error: userError } = await admin.auth.admin.getUserById(userId);
-    if (userError) throw userError;
-    if (!userData.user?.email) {
+    if (!user.email) {
       return json({ error: "Primeiro associa um endereço de e-mail à conta." }, 400);
     }
 
