@@ -53,11 +53,11 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_secure_room_sync.sql
       - name: Apply player account schema to disposable PostgreSQL
         run: |
-          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_player_accounts_leaderboard.sql
       - name: Apply Twilio phone recovery schema to disposable PostgreSQL
         run: |
-          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_phone_recovery.sql
       - name: Test room creation and RPC permissions
         run: |
@@ -65,7 +65,7 @@ jobs:
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/secure_room_sync_test.sql
       - name: Test player accounts and phone recovery security
         run: |
-          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/phone_recovery_test.sql
       - name: Test move-validation rules
         run: deno test supabase/functions/validate-and-sync-move/index_test.ts
