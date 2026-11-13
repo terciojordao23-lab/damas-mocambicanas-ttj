@@ -29,9 +29,9 @@ CREATE OR REPLACE FUNCTION auth.jwt()
 RETURNS jsonb
 LANGUAGE sql
 STABLE
-AS $
+AS $authjwt$
   SELECT COALESCE(NULLIF(current_setting('request.jwt.claims', true), '')::jsonb, '{}'::jsonb)
-$;
+$authjwt$;
 
 CREATE OR REPLACE FUNCTION public.create_game_room()
 RETURNS TABLE(room_id uuid, room_code text)
