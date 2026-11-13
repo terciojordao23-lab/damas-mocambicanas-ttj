@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const authorization = req.headers.get("Authorization") || "";
-  const token = authorization.replace(/^Bearer\\s+/i, "");
+  const token = authorization.replace(/^Bearer\s+/i, "");
   if (!token) return json({ error: "Inicia sessão para guardar o telefone de recuperação." }, 401);
 
   try {
