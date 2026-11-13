@@ -17,7 +17,7 @@ function json(body: unknown, status = 200) {
 
 function normalizePhone(value: unknown) {
   const phone = String(value || "").trim();
-  return /^\\+[1-9]\\d{7,14}$/.test(phone) ? phone : null;
+  return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : null;
 }
 
 async function hmacHex(secret: string, value: string) {
@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
     if (action === "complete") {
       const code = String(body?.code || "").trim();
       const newPassword = String(body?.newPassword || "");
-      if (!/^\\d{4,10}$/.test(code)) return json({ error: "Introduz o código recebido por SMS." }, 400);
+      if (!/^\d{4,10}$/.test(code)) return json({ error: "Introduz o código recebido por SMS." }, 400);
       if (newPassword.length < 8) {
         return json({ error: "A nova palavra-passe deve ter pelo menos 8 caracteres." }, 400);
       }
