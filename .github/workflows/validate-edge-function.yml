@@ -1,13 +1,18 @@
-name: Validate Damas TTJ Edge Function
+name: Validate Damas TTJ Edge Functions and Accounts
 
 on:
   push:
     branches:
       - fix/secure-room-sync-rpc
+      - feature/twilio-phone-recovery
     paths:
       - "supabase/functions/validate-and-sync-move/**"
+      - "supabase/functions/recovery-contact/**"
+      - "supabase/functions/phone-password-recovery/**"
       - "supabase/tests/**"
       - "supabase_secure_room_sync.sql"
+      - "supabase_player_accounts_leaderboard.sql"
+      - "supabase_phone_recovery.sql"
       - ".github/workflows/validate-edge-function.yml"
   workflow_dispatch:
 
@@ -46,11 +51,26 @@ jobs:
         run: |
           docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_secure_room_sync.sql
+      - name: Apply player account schema to disposable PostgreSQL
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_player_accounts_leaderboard.sql
+      - name: Apply Twilio phone recovery schema to disposable PostgreSQL
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase_phone_recovery.sql
       - name: Test room creation and RPC permissions
         run: |
           docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/secure_room_sync_test.sql
+      - name: Test player accounts and phone recovery security
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \\
+            psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/phone_recovery_test.sql
       - name: Test move-validation rules
         run: deno test supabase/functions/validate-and-sync-move/index_test.ts
-      - name: Type-check Edge Function
-        run: deno check supabase/functions/validate-and-sync-move/index.ts
+      - name: Type-check Edge Functions
+        run: |
+          deno check supabase/functions/validate-and-sync-move/index.ts
+          deno check supabase/functions/recovery-contact/index.ts
+          deno check supabase/functions/phone-password-recovery/index.ts
