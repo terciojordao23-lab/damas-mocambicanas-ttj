@@ -13,6 +13,8 @@ on:
       - "supabase_secure_room_sync.sql"
       - "supabase_player_accounts_leaderboard.sql"
       - "supabase_phone_recovery.sql"
+      - "supabase/config.toml"
+      - "index.html"
       - ".github/workflows/validate-edge-function.yml"
   workflow_dispatch:
 
@@ -67,6 +69,10 @@ jobs:
         run: |
           docker run --rm --network host -e PGPASSWORD=postgres -v "$GITHUB_WORKSPACE:/workspace" postgres:16 \
             psql -h 127.0.0.1 -U postgres -d damas_test -v ON_ERROR_STOP=1 -f /workspace/supabase/tests/phone_recovery_test.sql
+      - name: Check frontend JavaScript syntax
+        run: |
+          node -e "const fs=require('fs'); const html=fs.readFileSync('index.html','utf8'); const scripts=[...html.matchAll(/<script(?:[^>]*)>([\\s\\S]*?)<\\/script>/g)].map(m=>m[1]).filter(Boolean); fs.writeFileSync('/tmp/damas-inline.js',scripts.join('\\n'));"
+          node --check /tmp/damas-inline.js
       - name: Test move-validation rules
         run: deno test supabase/functions/validate-and-sync-move/index_test.ts
       - name: Type-check Edge Functions
