@@ -576,7 +576,7 @@ async function registerPlayerAccount(){
   if(!user?.is_anonymous)throw new Error('Esta sessão já está associada a uma conta registada.');
   const displayName=accountValue('playerDisplayName');
   const email=accountValue('playerEmail').toLowerCase();
-  const phone=accountValue('recoveryPhone');
+  const phone=normalizeRecoveryPhoneInput(accountValue('recoveryPhone'));document.getElementById('recoveryPhone').value=phone;
   if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
   if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional, por exemplo +258841234567.');
@@ -591,6 +591,11 @@ async function registerPlayerAccount(){
    ?'A ligação de identidade ainda não está activada. Activa Manual Linking nas definições de Authentication do Supabase. Detalhe: '+message
    :'Não foi possível iniciar o registo: '+message);
  }finally{btn.disabled=false;}
+}
+function normalizeRecoveryPhoneInput(value){
+ let phone=String(value||'').trim().replace(/[()\\s-]/g,'');
+ if(phone.startsWith('00'))phone='+'+phone.slice(2);
+ return phone;
 }
 async function saveRecoveryPhone(showMessage=true){
  const phone=accountValue('recoveryPhone');
@@ -614,9 +619,11 @@ async function requestPasswordRecovery(){
   const {data,error}=await db.functions.invoke('phone-password-recovery',{body:{action:'request',phone}});
   if(error)throw error;
   if(data?.error)throw new Error(data.error);
+  document.getElementById('accountOtp').value='';
   document.getElementById('accountOtp').hidden=false;
   document.getElementById('finishRecoveryBtn').hidden=false;
   document.getElementById('playerPassword').placeholder='Nova palavra-passe (mínimo 8 caracteres)';
+  document.getElementById('playerPassword').autocomplete='new-password';
   accountMessage(data?.message||'Se o número estiver associado a uma conta confirmada, receberás um código SMS.');
  }catch(error){accountMessage('Não foi possível iniciar a recuperação: '+(error.message||error));}
  finally{btn.disabled=false;}
@@ -624,7 +631,7 @@ async function requestPasswordRecovery(){
 async function completePasswordRecovery(){
  const btn=document.getElementById('finishRecoveryBtn');btn.disabled=true;
  try{
-  const phone=accountValue('recoveryPhone'),code=accountValue('accountOtp'),password=accountValue('playerPassword');
+  const phone=normalizeRecoveryPhoneInput(accountValue('recoveryPhone')),code=accountValue('accountOtp'),password=accountValue('playerPassword');document.getElementById('recoveryPhone').value=phone;
   const email=accountValue('playerEmail').toLowerCase();
   if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional.');
   if(!/^\d{4,10}$/.test(code))throw new Error('Introduz o código recebido por SMS.');
@@ -637,6 +644,7 @@ async function completePasswordRecovery(){
   document.getElementById('accountOtp').value='';
   document.getElementById('finishRecoveryBtn').hidden=true;
   document.getElementById('playerPassword').placeholder='Palavra-passe (mínimo 8 caracteres)';
+  document.getElementById('playerPassword').autocomplete='current-password';
   if(email){
    const {error:loginError}=await db.auth.signInWithPassword({email,password});
    if(!loginError){
