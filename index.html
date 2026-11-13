@@ -578,8 +578,8 @@ async function registerPlayerAccount(){
   const email=accountValue('playerEmail').toLowerCase();
   const phone=accountValue('recoveryPhone');
   if(displayName.length<2||displayName.length>24)throw new Error('O nome deve ter entre 2 e 24 caracteres.');
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
-  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional, por exemplo +258841234567.');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('Introduz um endereço de e-mail válido.');
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional, por exemplo +258841234567.');
   const {error}=await db.auth.updateUser({email,data:{display_name:displayName}},{emailRedirectTo:window.location.href});
   if(error)throw error;
   await saveRecoveryPhone(false);
@@ -594,7 +594,7 @@ async function registerPlayerAccount(){
 }
 async function saveRecoveryPhone(showMessage=true){
  const phone=accountValue('recoveryPhone');
- if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone no formato internacional (+258…).');
+ if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone no formato internacional (+258…).');
  const {data,error}=await db.functions.invoke('recovery-contact',{body:{action:'set',phone}});
  if(error)throw error;
  if(data?.error)throw new Error(data.error);
@@ -610,7 +610,7 @@ async function requestPasswordRecovery(){
  const btn=document.getElementById('recoverPasswordBtn');btn.disabled=true;
  try{
   const phone=accountValue('recoveryPhone');
-  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional (+258…).');
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional (+258…).');
   const {data,error}=await db.functions.invoke('phone-password-recovery',{body:{action:'request',phone}});
   if(error)throw error;
   if(data?.error)throw new Error(data.error);
@@ -626,8 +626,8 @@ async function completePasswordRecovery(){
  try{
   const phone=accountValue('recoveryPhone'),code=accountValue('accountOtp'),password=accountValue('playerPassword');
   const email=accountValue('playerEmail').toLowerCase();
-  if(!/^\\+[1-9]\\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional.');
-  if(!/^\\d{4,10}$/.test(code))throw new Error('Introduz o código recebido por SMS.');
+  if(!/^\+[1-9]\d{7,14}$/.test(phone))throw new Error('Introduz o telefone de recuperação no formato internacional.');
+  if(!/^\d{4,10}$/.test(code))throw new Error('Introduz o código recebido por SMS.');
   if(password.length<8)throw new Error('A nova palavra-passe deve ter pelo menos 8 caracteres.');
   const {data,error}=await db.functions.invoke('phone-password-recovery',{
    body:{action:'complete',phone,code,newPassword:password}
