@@ -95,18 +95,18 @@ Deno.serve(async (req: Request) => {
     if (!phone) return json({ error: "Introduz o telefone no formato internacional (+258…)."}, 400);
 
     const admin = ctx.supabaseAdmin;
-    const user = await findEligibleAccount(admin, phone);
 
     if (action === "request") {
-      // Always return the same success response for unknown or ineligible numbers.
-      if (!user) {
-        return json({
-          ok: true,
-          message: "Se o número estiver associado a uma conta confirmada, receberás um código SMS.",
-        });
-      }
+      // Do not reveal whether a phone number belongs to an account.
+      const genericResponse = {
+        ok: true,
+        message: "Se o número estiver associado a uma conta confirmada, receberás um código SMS. Se não chegar, confirma o número e tenta novamente.",
+      };
+      try {
+        const user = await findEligibleAccount(admin, phone);
+        if (!user) return json(genericResponse);
 
-      const { authToken } = twilioConfig();
+        const { authToken } = twilioConfig();
       const forwarded = req.headers.get("cf-connecting-ip") ||
         req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "";
       const phoneHash = await hmacHex(authToken, "phone:" + phone);
@@ -126,29 +126,26 @@ Deno.serve(async (req: Request) => {
           p_window_seconds: 900,
         }));
       }
-      const limits = await Promise.all(checks);
-      if (limits.some((item: any) => item.error || item.data !== true)) {
-        return json({
-          ok: true,
-          message: "Se o número estiver associado a uma conta confirmada, receberás um código SMS.",
-        });
-      }
+        const limits = await Promise.all(checks);
+        if (limits.some((item: any) => item.error || item.data !== true)) {
+          return json(genericResponse);
+        }
 
-      const { response } = await twilioRequest("Verifications", {
-        To: phone,
-        Channel: "sms",
-      });
-      if (!response.ok) {
-        console.error("Twilio verification start failed with HTTP", response.status);
-        return json({ error: "Não foi possível enviar o SMS agora. Tenta novamente mais tarde." }, 503);
+        const { response } = await twilioRequest("Verifications", {
+          To: phone,
+          Channel: "sms",
+        });
+        if (!response.ok) {
+          console.error("Twilio verification start failed with HTTP", response.status);
+        }
+      } catch (requestError) {
+        console.error("Password recovery request could not be started:", requestError instanceof Error ? requestError.message : "unknown error");
       }
-      return json({
-        ok: true,
-        message: "Se o número estiver associado a uma conta confirmada, receberás um código SMS.",
-      });
+      return json(genericResponse);
     }
 
     if (action === "complete") {
+      const user = await findEligibleAccount(admin, phone);
       const code = String(body?.code || "").trim();
       const newPassword = String(body?.newPassword || "");
       if (!/^\d{4,10}$/.test(code)) return json({ error: "Introduz o código recebido por SMS." }, 400);
